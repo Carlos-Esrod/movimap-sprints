@@ -1,0 +1,196 @@
+/* Leaflet styles */
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-smoothing: grayscale;
+}
+
+#root {
+  height: 100vh;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+.leaflet-gps-controls {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1rem;
+  z-index: 1000 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.location-btn {
+  position: relative;
+  z-index: 1000 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Main action buttons (Actualizar, Mi ubicación) */
+.gps-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+  background: white;
+  border-radius: 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1f2937;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.gps-action-btn:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.gps-action-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.gps-action-btn svg {
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+/* Follow button */
+.gps-follow-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+  background: white;
+  border-radius: 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1f2937;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.gps-follow-btn:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.gps-follow-btn svg {
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.gps-follow-active {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.gps-follow-active:hover {
+  background: #059669;
+}
+
+.gps-follow-active span {
+  color: white;
+}
+
+.gps-follow-active svg {
+  color: white;
+}
+
+/* Status indicator */
+.gps-status-btn {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.125rem;
+  background: white;
+  border-radius: 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: default;
+}
+
+.gps-status-ok {
+  color: #16a34a;
+}
+
+.gps-status-warning {
+  color: #dc2626;
+}
+
+/* Error state */
+.gps-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.gps-error svg {
+  color: #dc2626;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .leaflet-gps-controls {
+    top: 1rem;
+    right: 0.75rem;
+    gap: 0.625rem;
+  }
+
+  .gps-action-btn,
+  .gps-follow-btn {
+    padding: 0.875rem 1.125rem;
+    border-radius: 14px;
+    font-size: 0.9375rem;
+  }
+
+  .gps-action-btn svg,
+  .gps-follow-btn svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .gps-status-btn {
+    padding: 0.75rem 1rem;
+    font-size: 0.8125rem;
+    border-radius: 12px;
+  }
+
+  .gps-status-btn .text-xl {
+    font-size: 1.25rem;
+  }
+}
+
+.leaflet-control {
+  z-index: 1000 !important;
+}
+
+.incident-popup {
+  font-size: 0.875rem;
+}
+
+.incident-popup button {
+  cursor: pointer;
+}
+
+.incident-popup button:hover {
+  opacity: 0.9;
+}
