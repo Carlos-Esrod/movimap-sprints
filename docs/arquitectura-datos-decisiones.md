@@ -1,0 +1,434 @@
+# Movimap — Diseño y decisiones de datos (votos, denuncias y BI)
+
+> Documento vivo. Fuente de trabajo para la reestructuración del modelo de datos
+> y el nuevo enfoque de negocio de Movimap.
+
+---
+
+## 1. Contexto y objetivo
+
+Movimap es una plataforma de reportes de incidencias de accesibilidad urbana
+(veredas, rampas, iluminación, etc.) en la comuna de Providencia.
+
+### Problemas detectados en la operación actual
+
+1. **Voto (up/down) roto al cambiar de opinión.** El `upsert` de PostgREST en
+   `incident_actions` chocaba con las políticas RLS → error
+   `new row violates row-level security policy for table "incident_actions"`.
+2. **Score no se propagaba correctamente** al cambiar de voto porque:
+   - el score era una columna denormalizada recalculada por trigger, y
+   - el frontend solo hacía un ajuste local `±1` sin reflejar el valor real
+     devuelto por el servidor.
+3. **Denuncia ("reportar") sin efecto real.** El botón insertaba en una tabla
+   `incident_reports` que **no existía** en el esquema → fallo silencioso.
+4. **Acoplamiento semántico.** Votos (up/down) y denuncias convivían de forma
+   confusa; el usuario pedía desacoplar "denunciar" de los votos.
+
+### Cambio estratégico de negocio
+
+- Se **descarta el rol `institution`**.
+- Se abandona la idea de **construir dashboards desde cero en el frontend**.
+- El modelo de negocio pasa a ser **vender información** a partir de los datos
+  recopilados (geo-referenciados), consumidos por herramientas de BI externas
+  (p. ej. **Power BI**) mediante exportación **CSV**.
+
+---
+
+## 2. Decisiones de diseño (resumen)
+
+| # | Decisión |
+|---|----------|
+| D1 | Normalizar los votos en una tabla dedicada `incident_votes` con 3 opciones (`up`, `down`, `resuelta`). |
+| D2 | El score se **calcula dinámicamente** (vistas), sin columnas denormalizadas en `incidents`. |
+| D3 | `votos de "resuelta"` ocultan la incidencia al usuario final al superar un **umbral configurable por incidencia**. |
+| D4 | Las denuncias/reportes se guardan en una tabla `incident_reports` **dedicada** a BI. |
+| D5 | Capa de datos para **Business Intelligence**, exportable a **CSV** para Power BI. |
+| D6 | **Eliminar el rol `institution`** y la página/web de dashboard del frontend. |
+| D7 | **No bypasear RLS** con `security definer` para operaciones de usuario; solo se permite el RLS correcto. |
+
+---
+
+## 3. Decisión D1 — Tabla `incident_votes`
+
+Sustituye a `incident_actions` como tabla de votos. Un usuario emite **un** voto
+por incidencia (hasta 3 opciones), definido por el constraint `unique`.
+
+```sql
+create table public.incident_votes (
+  id          uuid primary key default gen_random_uuid(),
+  incident_id uuid not null references public.incidents(id) on delete cascade,
+  user_id     uuid not null references public.profiles(id),
+  vote_type   text not null check (vote_type in ('up', 'down', 'resuelta')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique(incident_id, user_id)
+);
+
+create index idx_votes_incident on public.incident_votes (incident_id);
+create index idx_votes_user on public.incident_votes (user_id);
+```
+
+### Semántica de los 3 votos
+
+| `vote_type` | Significado | Efecto en score | Efecto en visibilidad |
+|-------------|-------------|-----------------|-----------------------|
+| `up`        | Confirmar que la incidencia existe | `+1` | — |
+| `down`      | Rechazar / considerarla falsa | `-1` | — |
+| `resuelta`  | Votar que la incidencia ya no debe mostrarse | `0` | Ocultarla al superar el umbral |
+
+> Importante: `resuelta` **no** afecta el score up/down. Es un voto de tercera
+> opción. "Ocultar" no borra el registro: solo deja de mostrarse al usuario final.
+
+### Flujo de cambio de voto (sin `upsert`, sin `security definer`)
+
+El cluster de votar se resuelve en el **cliente** con una consulta previa:
+
+1. `getMyVote(incident_id)` → consulta `incident_votes` con `auth.uid()`.
+2. Si **no existe** voto → `INSERT`.
+3. Si existe y es distinto → `UPDATE` (cambio de opción).
+4. Si es igual → no-op.
+
+Las políticas RLS permiten ambas operaciones de forma natural (ver §6), por lo
+que **no** se requiere `ON CONFLICT DO UPDATE` ni funciones `security definer`.
+
+---
+
+## 4. Decisión D2 — Score/confirmaciones dinámicos
+
+Se **eliminan** de `incidents` las columnas denormalizadas
+`score` y `confirmation_count`. El score y las confirmaciones se calculan
+siempre desde `incident_votes`.
+
+- `score = count(up) - count(down)`
+- `confirmation_count = count(up)`
+- `votes_up / votes_down / votes_resuelta` como totales por incidencia.
+
+### Vista `public.incidents_with_stats` (todos los datos, para admin)
+
+```sql
+create or replace view public.incidents_with_stats
+with (security_invoker = true) as
+select
+  i.*,
+  coalesce(v.votes_up, 0)        as votes_up,
+  coalesce(v.votes_down, 0)      as votes_down,
+  coalesce(v.votes_resuelta, 0)  as votes_resuelta,
+  coalesce(v.votes_up, 0) - coalesce(v.votes_down, 0) as score,
+  coalesce(v.votes_up, 0)        as confirmation_count
+from public.incidents i
+left join (
+  select incident_id,
+         count(*) filter (where vote_type = 'up')        as votes_up,
+         count(*) filter (where vote_type = 'down')      as votes_down,
+         count(*) filter (where vote_type = 'resuelta')  as votes_resuelta
+  from public.incident_votes
+  group by incident_id
+) v on v.incident_id = i.id;
+```
+
+### Vista `public.incidents_public` (usuario final, filtra por umbral)
+
+```sql
+create or replace view public.incidents_public
+with (security_invoker = true) as
+select *
+from public.incidents_with_stats
+where votes_resuelta < coalesce(i.resuelto_threshold, 3)
+  and status not in ('rechazado', 'expirado');
+```
+
+> Nota: en `incidents_public` debe referenciarse el umbral de cada incidencia.
+> Ver §5 (D3). La vista final debe leer `i.resuelto_threshold` desde `incidents`.
+
+---
+
+## 5. Decisión D3 — Umbral de "resuelta" configurable
+
+El número de votos `resuelta` que ocultan una incidencia al usuario final es
+**configurable por incidencia** mediante una nueva columna en `incidents`:
+
+```sql
+alter table public.incidents
+  add column if not exists resuelto_threshold int not null default 3
+    check (resuelto_threshold >= 1);
+```
+
+- Valor por defecto: `3`.
+- Se puede modificar por incidencia (admin / negocio).
+- La vista `incidents_public` excluye incidencias con
+  `votes_resuelta >= resuelto_threshold`.
+
+---
+
+## 6. RLS (Decisión D7) — sin `security definer` para acciones de usuario
+
+### `incident_votes`
+
+```sql
+alter table public.incident_votes enable row level security;
+
+-- cualquier persona puede ver los votos
+create policy "Anyone can view votes"
+on public.incident_votes for select to public using (true);
+
+-- insertar un voto propio
+create policy "Users can create own votes"
+on public.incident_votes for insert to authenticated
+with check (auth.uid() = user_id);
+
+-- cambiar el voto propio
+create policy "Users can update own votes"
+on public.incident_votes for update to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+-- borrar el voto propio
+create policy "Users can delete own votes"
+on public.incident_votes for delete to authenticated
+using (auth.uid() = user_id);
+```
+
+> La unicidad `unique(incident_id, user_id)` impide votos duplicados, por lo que
+> **no** se necesita ningún `not exists` en la política de insert (esta fue la
+> causa raíz del bug original de RLS).
+
+### `incident_reports` (denuncias)
+
+```sql
+alter table public.incident_reports enable row level security;
+
+create policy "Users can create own reports"
+on public.incident_reports for insert to authenticated
+with check (auth.uid() = reported_by);
+
+create policy "Users can update own reports"
+on public.incident_reports for update to authenticated
+using (auth.uid() = reported_by)
+with check (auth.uid() = reported_by);
+
+create policy "Only admin can view reports"
+on public.incident_reports for select to authenticated
+using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+
+create policy "Admin can update reports"
+on public.incident_reports for update to authenticated
+using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'))
+with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+
+create policy "Admin can delete reports"
+on public.incident_reports for delete to authenticated
+using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+```
+
+`security_invoker = true` en las vistas hace que respeten el RLS de las tablas base.
+
+---
+
+## 7. Decisión D4 y D5 — Capa de Business Intelligence
+
+### Tablas transaccionales (fuente de verdad)
+
+- `incidents`
+- `incident_votes` (votos up/down/resuelta)
+- `incident_reports` (denuncias)
+- `audit_log`
+- `profiles`
+
+### Capa BI dedicada
+
+Se crea un **esquema `bi`** (o vistas `analytics_*`) con datos agregados/planos,
+pensados para **lectura y exportación CSV**. Ejemplo de vista de análisis:
+
+```sql
+create schema if not exists bi;
+
+create or replace view bi.incident_daily as
+select
+  i.id as incident_id,
+  i.category,
+  i.severity,
+  i.status,
+  i.created_at::date as report_date,
+  i.latitude,
+  i.longitude,
+  coalesce(v.votes_up, 0)        as votes_up,
+  coalesce(v.votes_down, 0)      as votes_down,
+  coalesce(v.votes_resuelta, 0)  as votes_resuelta,
+  coalesce(v.votes_up, 0) - coalesce(v.votes_down, 0) as score,
+  (select count(*) from public.incident_reports r
+    where r.incident_id = i.id and r.status = 'pendiente') as reports_pending
+from public.incidents i
+left join (
+  select incident_id,
+         count(*) filter (where vote_type = 'up')       as votes_up,
+         count(*) filter (where vote_type = 'down')     as votes_down,
+         count(*) filter (where vote_type = 'resuelta') as votes_resuelta
+  from public.incident_votes
+  group by incident_id
+) v on v.incident_id = i.id;
+```
+
+### Exportación a CSV (Power BI)
+
+> Guía práctica de consumo (conector Postgres + CSV) en `docs/bi-powerbi-guia.md`.
+
+- Toda tabla/vista es accesible vía **PostgREST** (Supabase Data API), que soporta
+  `Accept: text/csv` → `curl -H "Accept: text/csv" .../rest/v1/bi/incident_daily`.
+- Alternativas: export del **Supabase SQL Editor**, `pg_dump`, o import directo a
+  Power BI vía conector Postgres/Supabase.
+
+#### Opción A — vía PostgREST (API REST → CSV)
+
+Supabase expone la Data API de PostgREST. Añadiendo la cabecera `Accept: text/csv`
+se obtiene directamente CSV, ideal para `Power BI` (conector *Web / OData*) o
+exportación programática.
+
+```bash
+# CSV con vista analítica (requiere token de sesión o service_role)
+curl -H "Accept: text/csv" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+  "$SUPABASE_URL/rest/v1/bi/incident_daily?select=*&order=report_date.desc"
+```
+
+- `?select=*` → todas las columnas.
+- Puedes filtrar con el formato de PostgREST: `?status=eq.confirmado`,
+  `?report_date=gte.2025-01-01`.
+- Para datos del producto (sin restricciones de RLS), usar `service_role` y
+  habilitar la vista para ese rol.
+
+#### Opción B — Power BI vía conector Postgres
+
+- Direct Query o Import con el conector **PostgreSQL/Supabase**.
+- Conexión a la vista `bi.incident_daily` (o tabla) con credenciales de lectura
+  del esquema `bi`.
+
+#### Opción C — Export desde Supabase
+
+- SQL Editor → `Download CSV` sobre la consulta de la vista.
+- `pg_dump --data-only --table=bi.incident_daily`.
+
+#### Consideraciones de seguridad para el producto de datos
+
+- Las vistas `bi.*` no deben ser accesibles a usuarios `anon`.
+- Habilitar select solo a `service_role` / un rol de integración dedicado
+  (otorgado como en `09`): `grant select on bi.incident_daily to service_role`.
+- Los datos exportados son el **producto comercial**; revisar qué columnas se
+  exponen (ubicación GPS, denunciantes anonimizados, etc.).
+
+### Acceso
+
+- Las vistas `bi.*` se habilitan para **lectura** a un rol de integración/BI
+  (o `authenticated`/`service_role` para la exportación controlada).
+- Las exportaciones de datos de negocio son el **producto** a vender.
+
+---
+
+## 8. Decisión D6 — Eliminar rol `institution` y dashboard de frontend
+
+- `UserRole` pasa de `'user' | 'admin' | 'institution'` a **`'user' | 'admin'`**.
+- Backend: `profiles.role check (role in ('user', 'admin'))`.
+- Frontend:
+  - Eliminar `DashboardPage.tsx` y la ruta `/dashboard`.
+  - Eliminar el enlace "Dashboard" de `NavBar.tsx`.
+  - Eliminar las RPC `get_dashboard_stats` (y tipos/datos asociados del dashboard).
+- Se mantiene `get_heatmap_data` (se usa en el mapa de la app pública). Opcional:
+  excluir incidencias ocultas por umbral de `resuelta`.
+
+---
+
+## 9. Cambios de frontend
+
+| Archivo | Cambio |
+|---------|--------|
+| `lib/supabase.ts` | `voteOnIncident` → getMyVote + insert/update (3 opciones, sin RPC). `getMyVote`/`getUserActions` → `incident_votes`. `getIncidents` → `incidents_public`. Nueva `getAdminIncidents` → `incidents_with_stats`. `reportIncident` → insert/update sin RPC. |
+| `components/IncidentDetailModal.tsx` | Botones Confirmar/Rechazar/Marcar resuelta → votos up/down/resuelta; resaltar voto activo; refrescar score desde la vista. |
+| `pages/HomePage.tsx` | `handleVoteSuccess` aplica la incidencia actualizada. |
+| `pages/ActivityPage.tsx` | Adaptar a `vote_type` (up/down/resuelta) en "Mis acciones". |
+| `types/index.ts` | `VoteAction = 'up' | 'down' | 'resuelta'`; `UserRole` sin `institution`; nueva interfaz para votos/analytics. |
+| `pages/AdminPage.tsx` | Consultar todas las incidencias (incluidas ocultas) y gestionar denuncias. |
+
+---
+
+## 10. Inventario de archivos SQL
+
+Los scripts se organizan en `backend/migraciones/` según el esquema al que
+pertenecen. Ver `backend/migraciones/README.md`.
+
+### `backend/migraciones/legacy/` — esquema antiguo (ya aplicado, no re-ejecutar)
+
+| Archivo | Estado | Acción |
+|---------|--------|--------|
+| `01_create_tables.sql` | Aplicado | Solo referencia (documentación). No re-ejecutar. |
+| `02_create_triggers_and_functions.sql` | Aplicado | El `09` hizo los `drop`/`create` de triggers. |
+| `03_create_rpc_functions.sql` | Aplicado | Contenía `get_dashboard_stats` (obsoleto) y `get_heatmap_data` (superado por `09`). |
+| `04_create_rls_policies.sql` | Aplicado | RLS del esquema antiguo (incl. `incident_actions`). |
+| `05_create_storage.sql` | Aplicado | Bucket de fotos (aún vigente). |
+| `06_setup_admin_and_demo_data.sql` | Aplicado | Seed del esquema antiguo (insertaba en `incident_actions`; ver `nuevo/01_seed_demo.sql`). |
+| `07_fix_votes_and_reports.sql` | Aplicado | Fix intermedio (creó `incident_reports`), superado por `09`. |
+
+### `backend/migraciones/nuevo/` — esquema actual normalizado
+
+| Archivo | Estado | Acción |
+|---------|--------|--------|
+| `00_esquema_actual.sql` | Creado | Esquema canónico completo del estado actual (proyecto nuevo desde cero). |
+| `01_seed_demo.sql` | Creado | Seed del esquema nuevo (votos en `incident_votes`). |
+| `09_normalize_votes_and_reports.sql` | Aplicado | Migración que transformó el legacy en el actual. |
+| ~~`08_create_rpc_votes.sql`~~ | **Eliminado** (no ejecutado) | Descartado: usaba `security definer`. |
+
+### Pasos de migración (resumen, a detallar en `09`)
+
+1. Crear `incident_votes` + índices + RLS.
+2. Migrar datos existentes de `incident_actions`:
+   `'confirmar' → 'up'`, `'rechazar' → 'down'`, `'marcar_resuelta' → 'resuelta'`.
+3. `alter table incidents add column resuelto_threshold`.
+4. Crear vistas `incidents_with_stats`, `incidents_public` y esquema/vistas `bi`.
+5. Dropear `score`/`confirmation_count` de `incidents`.
+6. Dropear triggers de `incident_actions` y la tabla (si se elimina) re-creando
+   el de auditoría sobre `incident_votes`.
+7. Ejecutar **solo** las migraciones pendientes en producción; nunca re-ejecutar
+   las ya aplicadas sin `drop` previo.
+
+### Rollback
+
+- Conservar `incident_reports` y `incident_votes` son aditivos (no destructivos
+  respecto a `incidents`), salvo el `drop` de `score`/`confirmation_count`.
+- Antes de dropear columnas, crear un backup.
+- Si se necesita revertir, se puede recrear las columnas de `score` desde
+  `incident_votes` con un `update ... from (select ...)`.
+
+---
+
+## 11. Edge cases y consideraciones
+
+- **Un usuario, un voto:** cambiar de `up` a `down` es un `UPDATE`, no un `INSERT`.
+- **Tres opciones no intercambiables:** votar `resuelta` no descuenta el score
+  up/down.
+- **Migración de datos:** datos legados de `incident_actions` deben mapearse.
+- **Terminología:** "reportar" pasa a ser **"denunciar"** (acción de usuario).
+  "Reporte" queda reservado para la incidencia creada.
+- **Umbral por incidencia:** usarlo SIEMPRE en `incidents_public` (no un valor
+  global) para que cada incidencia tenga su propio umbral.
+- **RLS en vistas:** usar `security_invoker = true` para que respeten el RLS de
+  las tablas base y no expongan columnas indebidas.
+- **Seguridad de exportación:** las vistas `bi.*` deben exponer los datos del
+  producto; revisar quién las lee.
+
+---
+
+## 12. Pendientes / siguientes pasos
+
+- [x] Crear `backend/migraciones/nuevo/09_normalize_votes_and_reports.sql`.
+- [x] Implementar cambios de frontend (§9).
+- [x] Eliminar `DashboardPage`, ruta `/dashboard` y `get_dashboard_stats`.
+- [x] Eliminar rol `institution` (tipos, NavBar, seed).
+- [x] Fix denuncia: `reportIncident` ya no pide el retorno de la fila con `.select()` (RLS solo-admin en `incident_reports`) → insert simple sin SELECT; se trata el duplicado (`23505`) como "ya denunciada".
+- [x] Corregir realtime de `HomePage` para refrescar desde `incidents_public` (columnas desnormalizadas eliminadas en D2).
+- [x] Crear `backend/migraciones/nuevo/10_bi_export.sql` (capa BI en esquema `bi`).
+- [x] Crear `backend/migraciones/nuevo/11_drop_institution_role.sql` (D6 backend).
+- [x] Crear `backend/migraciones/nuevo/12_expose_bi_schema.sql` (grants `authenticator`/`service_role`).
+- [x] Crear `backend/migraciones/nuevo/13_analytics_view.sql` (vista `public.analytics_incident_daily`).
+- [x] Crear `backend/migraciones/nuevo/14_bi_reader_role.sql` (rol read-only `bi_reader` para Power BI).
+- [x] BI funcional vía PostgREST: `public.analytics_incident_daily` exportable a CSV (`Accept: text/csv`) con `service_role`; anon/authenticated bloqueados. Esquema `bi` no se exige exponer en el dashboard (PostgREST no lo refleja).
+- [x] Exportar CSV con Power BI (conector Postgres con rol `bi_reader` a `bi.incident_daily`, o `curl -H "Accept: text/csv"` con `service_role`).
+- [ ] Verificar ocultamiento por umbral en el mapa/detalle (D3) con una incidencia que supere el umbral.
+- [ ] Pruebas end-to-end: votar, cambiar voto, denunciar, ocultamiento por umbral.
