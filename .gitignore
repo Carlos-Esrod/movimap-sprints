@@ -43,7 +43,6 @@ temp/
 *.stories.ts
 *.mdx
 *.md
-docs/
 .DS_Store
 Thumbs.db
 *.code-profiles
