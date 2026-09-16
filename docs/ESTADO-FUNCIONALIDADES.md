@@ -19,7 +19,7 @@ geo-referenciada se exporta a herramientas de BI externas (p. ej. **Power BI**).
 |------|-------------|
 | Frontend | React 18, TypeScript, Vite, TailwindCSS, Leaflet (`react-leaflet`), Supabase JS, `react-hook-form`/zod, `recharts`, `jspdf`/`html2canvas`, `lucide-react` |
 | Backend | Supabase (PostgreSQL + Auth + Storage + Realtime + PostgREST) |
-| Datos | Esquema normalizado en PostgreSQL, capa BI (`bi` + `public.analytics_incident_daily`) |
+| Datos | Esquema normalizado en PostgreSQL, capa BI (`bi` + `public.analytics_*`), rol de solo lectura `bi_reader` |
 
 ### Arquitectura y repositorio
 
@@ -40,6 +40,7 @@ En producción se aplicó:
 2. `nuevo/09_normalize_votes_and_reports.sql` (normalización votos/denuncias)
 3. Capa BI: `nuevo/10_bi_export.sql`, `nuevo/12_expose_bi_schema.sql`,
    `nuevo/13_analytics_view.sql`, `nuevo/14_bi_reader_role.sql`
+4. Ampliación BI (D8): `nuevo/15_expand_bi_views.sql`
 
 > Para un proyecto nuevo desde cero se usa `nuevo/00_esquema_actual.sql`
 > y luego `nuevo/01_seed_demo.sql`. No mezclar con `legacy/`.
@@ -112,15 +113,22 @@ En producción se aplicó:
 ### 2.7 Capa de Business Intelligence (producto de datos)
 
 - **Esquema `bi`** con la vista **`bi.incident_daily`**: una fila por incidencia
-  con categoría, severidad, estado, fecha, ubicación, `resuelto_threshold`,
-  votos por tipo, `score` y **denuncias pendientes**.
-- **`public.analytics_incident_daily`** — vista espejo expuesta en `public`
-  (PostgREST no refleja el esquema `bi`), para exportación **CSV**.
+  con categoría, severidad, estado, descripción, fechas (`observed_date`,
+  `report_date`, `updated_at`, `resolved_at`), `has_resolved_by`, ubicación,
+  `image_url`, `resolution_days`, `resuelto_threshold`, votos por tipo,
+  `score` y conteos de denuncias por estado (`reports_total/pending/resolved/rejected`).
+- **`bi.incident_reports_daily`** — vista de **denuncias anonimizadas**
+  (sin `reported_by`): una fila por denuncia con `reason`, estado y contexto.
+- **`public.analytics_incident_daily`** y **`public.analytics_incident_reports_daily`**
+  — vistas espejo en `public` (PostgREST no refleja el esquema `bi`), para exportación **CSV**.
 - **Exportación CSV vía PostgREST** con `Accept: text/csv`.
-- **Rol `bi_reader`** de solo lectura para **Power BI** (conector Postgres),
-  con `SELECT` únicamente sobre las vistas de datos.
+- **Rol `bi_reader`** de solo lectura para **Power BI** (conector Postgres vía
+  **session pooler**), con `SELECT` únicamente sobre las vistas de datos.
 - **Seguridad**: el producto de datos se lee **solo** con `service_role` /
-  `bi_reader`; `anon` y `authenticated` están revocados.
+  `bi_reader`; `anon` y `authenticated` están revocados. Datos **sin PII**.
+- **Onboarding y distribución**: `docs/data-dictionary.md` (diccionario),
+  `docs/bi-client-onboarding.md` (conexión + certificado CA) y
+  `docs/terms-of-use.md` (licencia del dato).
 
 ### 2.8 Limpieza / decisiones de negocio
 
@@ -235,4 +243,6 @@ En producción se aplicó:
 - [ ] Verificar el ocultamiento por umbral (D3) en el mapa/detalle con una
       incidencia que supere el umbral.
 - [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.
+- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar las vistas BI ampliadas.
+- [ ] Emitir credenciales/roles por cliente para la venta formal del dato (multi-cliente).
 ```

@@ -254,23 +254,34 @@ where votes_resuelta < resuelto_threshold
 
 create schema if not exists bi;
 
+-- Vista BI expandida (D8): una fila por incidencia con más atributos de negocio
 create or replace view bi.incident_daily
-with (security_invoker = true) as
+with (security_invoker = false) as
 select
-  i.id               as incident_id,
+  i.id                       as incident_id,
   i.category,
   i.severity,
   i.status,
-  i.created_at::date as report_date,
+  i.description,
+  i.observed_at::date        as observed_date,
+  i.created_at::date         as report_date,
+  i.updated_at,
+  i.resolved_at,
+  i.resolved_by is not null  as has_resolved_by,
   i.latitude,
   i.longitude,
   i.resuelto_threshold,
+  i.image_url,
+  round(extract(epoch from (i.resolved_at - i.created_at)) / 86400.0, 2)
+                             as resolution_days,
   coalesce(v.votes_up, 0)        as votes_up,
   coalesce(v.votes_down, 0)      as votes_down,
   coalesce(v.votes_resuelta, 0)  as votes_resuelta,
   coalesce(v.votes_up, 0) - coalesce(v.votes_down, 0) as score,
-  (select count(*) from public.incident_reports r
-    where r.incident_id = i.id and r.status = 'pendiente') as reports_pending
+  coalesce(r.reports_total, 0)   as reports_total,
+  coalesce(r.reports_pending, 0) as reports_pending,
+  coalesce(r.reports_resolved, 0) as reports_resolved,
+  coalesce(r.reports_rejected, 0) as reports_rejected
 from public.incidents i
 left join (
   select incident_id,
@@ -279,10 +290,54 @@ left join (
          count(*) filter (where vote_type = 'resuelta') as votes_resuelta
   from public.incident_votes
   group by incident_id
-) v on v.incident_id = i.id;
+) v on v.incident_id = i.id
+left join (
+  select incident_id,
+         count(*)                                          as reports_total,
+         count(*) filter (where status = 'pendiente')      as reports_pending,
+         count(*) filter (where status = 'resuelto')       as reports_resolved,
+         count(*) filter (where status = 'rechazado')      as reports_rejected
+  from public.incident_reports
+  group by incident_id
+) r on r.incident_id = i.id;
 
-grant usage on schema bi to authenticated, service_role;
-grant select on bi.incident_daily to authenticated, service_role;
+-- Vista de denuncias anonimizadas (sin reported_by / sin PII) — D8
+create or replace view bi.incident_reports_daily
+with (security_invoker = false) as
+select
+  r.id                as report_id,
+  r.incident_id,
+  i.category,
+  i.severity,
+  i.status            as incident_status,
+  i.latitude,
+  i.longitude,
+  r.status            as report_status,
+  r.reason,
+  r.created_at::date  as report_date,
+  r.updated_at
+from public.incident_reports r
+left join public.incidents i on i.id = r.incident_id;
+
+-- Vistas espejo en `public` para exportación vía PostgREST (PostgREST no refleja `bi`)
+create or replace view public.analytics_incident_daily
+with (security_invoker = true) as
+select * from bi.incident_daily;
+
+create or replace view public.analytics_incident_reports_daily
+with (security_invoker = true) as
+select * from bi.incident_reports_daily;
+
+grant usage on schema bi to authenticator, service_role, bi_reader;
+grant select on bi.incident_daily to service_role, bi_reader;
+grant select on bi.incident_reports_daily to service_role, bi_reader;
+revoke all on bi.incident_daily from public, anon, authenticated;
+revoke all on bi.incident_reports_daily from public, anon, authenticated;
+
+grant select on public.analytics_incident_daily to service_role;
+grant select on public.analytics_incident_reports_daily to service_role;
+revoke all on public.analytics_incident_daily from public, anon, authenticated;
+revoke all on public.analytics_incident_reports_daily from public, anon, authenticated;
 
 -- ============================================
 -- RPC: mapa de calor (excluye ocultas por umbral)

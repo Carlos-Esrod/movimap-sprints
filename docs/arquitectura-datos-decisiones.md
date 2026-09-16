@@ -45,6 +45,7 @@ Movimap es una plataforma de reportes de incidencias de accesibilidad urbana
 | D5 | Capa de datos para **Business Intelligence**, exportable a **CSV** para Power BI. |
 | D6 | **Eliminar el rol `institution`** y la página/web de dashboard del frontend. |
 | D7 | **No bypasear RLS** con `security definer` para operaciones de usuario; solo se permite el RLS correcto. |
+| D8 | **Ampliar el producto de datos BI** (más atributos de negocio + vista de denuncias anonimizadas) y **canal de entrega solo-lectura `bi_reader`** vía session pooler, con documentación de onboarding y términos para el cliente. |
 
 ---
 
@@ -336,7 +337,51 @@ curl -H "Accept: text/csv" \
 
 ---
 
-## 9. Cambios de frontend
+## 9. Decisión D8 — Ampliación del producto de datos y entrega al cliente
+
+### Objetivo
+Vender la información recopilada a instituciones/municipalidades. Para ello, la
+capa BI se amplía con atributos de negocio útiles para el análisis urbano y se
+define un **canal de entrega comercial** de solo lectura, seguro y reutilizable
+por cada cliente.
+
+### Ampliación de la capa BI (`15_expand_bi_views.sql`)
+- **`bi.incident_daily`** se expande: añade `description`, `observed_date`,
+  `updated_at`, `resolved_at`, `has_resolved_by` (sin identidad), `image_url`,
+  **`resolution_days`**, y conteos de denuncias por estado
+  (`reports_total / pending / resolved / rejected`).
+- **Nuevo `bi.incident_reports_daily`**: una fila por denuncia, **anonimizada**
+  (sin `reported_by`), con `reason`, estado y contexto de la incidencia.
+- **Vistas espejo** `public.analytics_incident_daily` y
+  `public.analytics_incident_reports_daily` para exportación vía PostgREST.
+- **Grants**: `SELECT` solo a `service_role` y `bi_reader`; `usage` en `bi` a
+  `authenticator`; revoke a `public`/`anon`/`authenticated`.
+
+### Canal de entrega (solo lectura)
+- **Canal principal**: conexión PostgreSQL de solo lectura con el rol
+  `bi_reader` a través del **session pooler** de Supabase (puerto 5432),
+  soportando *Import* y *DirectQuery*.
+  - Conexiones Session pooler → usuario `bi_reader.<project_ref>` (formato
+    `rol.project_ref`); región del proyecto: `us-west-2`.
+  - El error "remote certificate is invalid" se resuelve confiando la **CA de
+    Supabase** (Settings → Database → SSL Configuration → Download Certificate)
+    en la máquina que corre la conexión (PC para Desktop, o el **gateway** para
+    Power BI Service).
+- **Canal alternativo**: exportación CSV/JSON vía PostgREST (conector Web) con
+  una **clave de lectura dedicada** (no la `service_role`, para no filtrar el
+  secreto maestro si se comparte el reporte).
+- **Multi-cliente (MVP)**: un único rol `bi_reader` para todos los clientes. Para
+  la venta formal, aprovisionar un **rol por cliente** (o un servicio de
+  emisión de credenciales/snapshots).
+
+### Entregables de documentación
+- `docs/data-dictionary.md` — diccionario de columnas de las vistas BI.
+- `docs/bi-client-onboarding.md` — guía de conexión Power BI + CA + gateway.
+- `docs/terms-of-use.md` — plantilla de términos de uso/licencia del dato.
+
+---
+
+## 10. Cambios de frontend
 
 | Archivo | Cambio |
 |---------|--------|
@@ -349,7 +394,7 @@ curl -H "Accept: text/csv" \
 
 ---
 
-## 10. Inventario de archivos SQL
+## 11. Inventario de archivos SQL
 
 Los scripts se organizan en `backend/migraciones/` según el esquema al que
 pertenecen. Ver `backend/migraciones/README.md`.
@@ -398,7 +443,7 @@ pertenecen. Ver `backend/migraciones/README.md`.
 
 ---
 
-## 11. Edge cases y consideraciones
+## 12. Edge cases y consideraciones
 
 - **Un usuario, un voto:** cambiar de `up` a `down` es un `UPDATE`, no un `INSERT`.
 - **Tres opciones no intercambiables:** votar `resuelta` no descuenta el score
@@ -415,7 +460,7 @@ pertenecen. Ver `backend/migraciones/README.md`.
 
 ---
 
-## 12. Pendientes / siguientes pasos
+## 13. Pendientes / siguientes pasos
 
 - [x] Crear `backend/migraciones/nuevo/09_normalize_votes_and_reports.sql`.
 - [x] Implementar cambios de frontend (§9).
@@ -430,5 +475,9 @@ pertenecen. Ver `backend/migraciones/README.md`.
 - [x] Crear `backend/migraciones/nuevo/14_bi_reader_role.sql` (rol read-only `bi_reader` para Power BI).
 - [x] BI funcional vía PostgREST: `public.analytics_incident_daily` exportable a CSV (`Accept: text/csv`) con `service_role`; anon/authenticated bloqueados. Esquema `bi` no se exige exponer en el dashboard (PostgREST no lo refleja).
 - [x] Exportar CSV con Power BI (conector Postgres con rol `bi_reader` a `bi.incident_daily`, o `curl -H "Accept: text/csv"` con `service_role`).
-- [ ] Verificar ocultamiento por umbral en el mapa/detalle (D3) con una incidencia que supere el umbral.
-- [ ] Pruebas end-to-end: votar, cambiar voto, denunciar, ocultamiento por umbral.
+- [x] **D8** — Crear `backend/migraciones/nuevo/15_expand_bi_views.sql` (ampliación de `bi.incident_daily` + `bi.incident_reports_daily` anonimizada).
+- [x] **D8** — Documentos de producto: `docs/data-dictionary.md`, `docs/bi-client-onboarding.md` (con resolución del certificado CA) y `docs/terms-of-use.md`.
+- [x] **D8** — Actualizar `docs/bi-powerbi-guia.md` con las vistas ampliadas y el fix de certificado.
+- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar `bi.incident_daily` / `bi.incident_reports_daily`.
+- [ ] Emitir credenciales por cliente (rol `bi_reader` o claves de lectura dedicadas) para la venta formal.
+- [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.

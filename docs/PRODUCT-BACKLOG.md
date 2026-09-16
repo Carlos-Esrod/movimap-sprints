@@ -38,8 +38,11 @@
 | UH-25 | Eliminación del rol "institution" | Refactor | 3 | ✅ Completado |
 | UH-26 | Normalización del modelo de datos | Refactor | 8 | ✅ Completado |
 | UH-27 | Diseño responsive (nav superior/inferior) | UI/UX | 3 | ✅ Completado |
+| UH-28 | Ampliación de la capa BI (atributos de negocio) | BI / Datos | 5 | ✅ Completado |
+| UH-29 | Vista de denuncias anonimizadas | BI / Datos | 5 | ✅ Completado |
+| UH-30 | Onboarding de cliente + términos de uso del dato | BI / Datos | 3 | ✅ Completado |
 
-**Total puntos (completados): 97**
+**Total puntos (completados): 110**
 
 ### Subtotal por épica
 
@@ -54,7 +57,7 @@
 | Denuncias | 3 |
 | Actividad | 3 |
 | Administración | 11 |
-| BI / Datos | 11 |
+| BI / Datos | 24 |
 | Refactor | 11 |
 | UI/UX | 3 |
 
@@ -417,6 +420,48 @@ superan un umbral,
 
 ---
 
+### UH-28 — Ampliación de la capa BI (atributos de negocio)  `⏱ 5`
+
+**Como** cliente/institucional,
+**quiero** una vista analítica más completa por incidencia,
+**para que** pueda analizar la gestión y resolución de incidencias.
+
+**Criterios de aceptación:**
+- `bi.incident_daily` ampliada con `description`, `observed_date`,
+  `updated_at`, `resolved_at`, `has_resolved_by`, `image_url`,
+  `resolution_days` y conteos de denuncias por estado.
+- Vistas espejo `public.analytics_incident_daily` actualizadas.
+- Acceso restringido a `service_role` / `bi_reader`.
+
+---
+
+### UH-29 — Vista de denuncias anonimizadas  `⏱ 5`
+
+**Como** cliente/institucional,
+**quiero** una vista de denuncias sin datos personales,
+**para que** pueda analizar los motivos y estados de las denuncias sin PII.
+
+**Criterios de aceptación:**
+- Vista `bi.incident_reports_daily` sin `reported_by`.
+- Columnas: incidencia, categoría, severidad, estado, motivo, fechas, ubicación.
+- `public.analytics_incident_reports_daily` para export CSV.
+
+---
+
+### UH-30 — Onboarding de cliente + términos de uso del dato  `⏱ 3`
+
+**Como** equipo comercial,
+**quiero** una guía de conexión y términos de uso,
+**para que** cada cliente pueda incorporar el dato de forma segura y normalizada.
+
+**Criterios de aceptación:**
+- `docs/bi-client-onboarding.md` con credenciales, session pooler y resolución
+  del error de certificado CA.
+- `docs/data-dictionary.md` con el diccionario de columnas.
+- `docs/terms-of-use.md` con la plantilla de licencia del dato.
+
+---
+
 ## Épica: Refactor
 
 ---
@@ -470,6 +515,7 @@ superan un umbral,
 
 - [ ] Verificar de forma automatizada el ocultamiento por umbral (D3) en el mapa/detalle.
 - [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.
+- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar las vistas BI ampliadas.
+- [ ] Emitir credenciales/roles por cliente para la venta formal del dato (multi-cliente).
 - [ ] Definir el modelo de **venta de datos** (plan de suscripción, permisos de lectura por cliente).
-- [ ] Revisar/anonimizar columnas sensibles expuestas en la capa BI (ubicación GPS, denunciantes).
 - [ ] Notificaciones y flujo de seguimiento por el usuario.
