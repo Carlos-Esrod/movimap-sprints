@@ -10,9 +10,9 @@ import SeveritySelector from '@/components/reports/SeveritySelector';
 import EvidenceUploader from '@/components/reports/EvidenceUploader';
 import Icon from '@/components/ui/Icon';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { createIncident } from '@/lib/supabase';
+import { createIncident, findNearbyIncidents, reverseGeocode, voteOnIncident } from '@/lib/supabase';
 import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MIN_LENGTH, DESCRIPTION_MAX_LENGTH, PHOTO_MAX_SIZE_BYTES, PHOTO_ACCEPTED_TYPES, isInsideZone, CENTER } from '@/lib/constants';
-import type { Profile } from '@/types';
+import type { Profile, NearbyIncident } from '@/types';
 
 interface ReportPageProps {
   profile: Profile;
@@ -34,6 +34,11 @@ function ReportPage({ profile }: ReportPageProps) {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [locationMethod, setLocationMethod] = useState<'none' | 'gps' | 'map'>('none');
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [placeName, setPlaceName] = useState<string | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+  const [nearbyIncidents, setNearbyIncidents] = useState<NearbyIncident[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyDismissed, setNearbyDismissed] = useState(false);
   const navigate = useNavigate();
 
   const {
@@ -57,6 +62,43 @@ function ReportPage({ profile }: ReportPageProps) {
   }, [gpsLat, gpsLon, latitude]);
 
   const mapCenter: [number, number] = (latitude && longitude) ? [latitude, longitude] : CENTER;
+
+  useEffect(() => {
+    if (latitude === null || longitude === null) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      const place = await reverseGeocode(latitude, longitude);
+      if (!active) return;
+      setPlaceName(place.place_name);
+      setAddress(place.address);
+    }, 400);
+    return () => { active = false; clearTimeout(timer); };
+  }, [latitude, longitude]);
+
+  useEffect(() => {
+    if (latitude === null || longitude === null || !category) return;
+    if (nearbyDismissed) return;
+    let active = true;
+    setNearbyLoading(true);
+    const timer = setTimeout(async () => {
+      const { data } = await findNearbyIncidents(latitude, longitude, category, 100);
+      if (active) setNearbyIncidents(data || []);
+      if (active) setNearbyLoading(false);
+    }, 350);
+    return () => { active = false; clearTimeout(timer); };
+  }, [latitude, longitude, category, nearbyDismissed]);
+
+  const handleConfirmNearby = async (incident: NearbyIncident) => {
+    if (profile) {
+      await voteOnIncident(incident.id, 'up');
+    }
+    navigate(`/incident/${incident.id}`);
+  };
+
+  useEffect(() => {
+    setNearbyDismissed(false);
+    setNearbyIncidents([]);
+  }, [latitude, longitude, category]);
 
   const handleLocationSelect = (lat: number, lng: number) => {
     setLatitude(lat);
@@ -117,6 +159,8 @@ function ReportPage({ profile }: ReportPageProps) {
       longitude,
       image: image || undefined,
       created_by: profile.id,
+      place_name: placeName,
+      address,
     });
 
     if (error) {
@@ -274,6 +318,57 @@ function ReportPage({ profile }: ReportPageProps) {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {locationSection}
+
+          {nearbyLoading && (
+            <div className="flex items-center gap-2 text-label-sm text-on-surface-variant">
+              <span className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></span>
+              Buscando reportes cercanos...
+            </div>
+          )}
+
+          {!nearbyLoading && !nearbyDismissed && nearbyIncidents.length > 0 && (
+            <div className="rounded-xl border border-secondary-container bg-secondary-container/20 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Icon name="alert" size={18} className="text-secondary" />
+                <h3 className="font-semibold text-on-surface">Esto ya fue reportado cerca</h3>
+              </div>
+              <p className="text-label-sm text-on-surface-variant">
+                En un radio de 100 m ya existe {nearbyIncidents.length === 1 ? 'un reporte' : `${nearbyIncidents.length} reportes`} de esta categoría.
+                Confirma el existente en lugar de crear un duplicado.
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {nearbyIncidents.map(n => (
+                  <div key={n.id} className="rounded-lg bg-surface-container-lowest border border-outline-variant p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-label-md font-semibold text-on-surface truncate">
+                          {INCIDENT_CATEGORIES.find(c => c.value === n.category)?.label || n.category}
+                        </p>
+                        {n.place_name && <p className="text-label-sm text-on-surface-variant truncate">{n.place_name}</p>}
+                        <p className="text-label-sm text-on-surface-variant">
+                          👍 {n.confirmation_count} · {Math.round(n.distance_m)} m · {n.description.substring(0, 60)}...
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmNearby(n)}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-secondary text-white text-label-sm font-semibold hover:opacity-90 transition"
+                      >
+                        Confirmar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setNearbyDismissed(true); setNearbyIncidents([]); }}
+                className="text-label-sm text-on-surface-variant hover:text-on-surface underline"
+              >
+                Crear de todos modos
+              </button>
+            </div>
+          )}
 
           <div className="space-y-4">
             <Select

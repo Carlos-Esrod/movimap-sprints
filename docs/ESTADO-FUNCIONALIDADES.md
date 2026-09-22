@@ -163,6 +163,10 @@ En producción se aplicó:
   confirmaciones, imagen, enlace a detalle completo).
 - **Búsqueda de dirección/ubicación** vía **Nominatim** (OpenStreetMap), con
   autocompletado y selección de resultado.
+- **Reportes cercanos a un destino (Fase 3)**: al seleccionar un resultado de
+  búsqueda, muestra un panel "Reportes cercanos" (250 m, todas las categorías)
+  con distancia, categoría y score, y centra/zoom el mapa al destino (panel
+  lateral en desktop, bottom-sheet en mobile).
 - **Filtros** por categoría y por estado en el listado.
 - **Lista lateral** de incidencias (desktop) y **lista tipo bottom-sheet** (móvil).
 - **Contadores** en el pie (activas, resueltas, categorías).
@@ -190,7 +194,11 @@ En producción se aplicó:
 - **Subida de evidencia fotográfica** con validación de tipo (JPG/PNG/WebP) y
   tamaño (máx. 2MB).
 - Guarda la incidencia con estado `nuevo` y muestra pantalla de éxito.
-
+- **Deduplicación al reportar (Fase 1)**: al fijar ubicación + categoría, el
+  sistema consulta incidencias cercanas (RPC `find_nearby_incidents`, 100 m) y, si
+  hay, ofrece **Confirmar existente** (voto `up`) o **Crear de todos modos**
+  (bloqueo suave). El punto se geodecodifica (Nominatim) y guarda `place_name` /
+  `address` como contexto del lugar.
 ### 3.5 Detalle de incidencia (modal)
 
 - Muestra descripción, imagen, estado, severidad, **score y confirmaciones**.

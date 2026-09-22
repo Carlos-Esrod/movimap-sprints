@@ -46,6 +46,8 @@ export interface Incident {
   estimated_duration: EstimatedDuration;
   status: IncidentStatus;
   image_url: string | null;
+  place_name: string | null;
+  address: string | null;
   confirmation_count: number;
   score: number;
   votes_up: number;
@@ -66,6 +68,24 @@ export interface IncidentAction {
   vote_type: VoteAction;
   created_at: string;
   updated_at: string;
+}
+
+export interface NearbyIncident {
+  id: string;
+  category: IncidentCategory;
+  description: string;
+  latitude: number;
+  longitude: number;
+  severity: number;
+  status: IncidentStatus;
+  place_name: string | null;
+  address: string | null;
+  distance_m: number;
+  score: number;
+  confirmation_count: number;
+  votes_up: number;
+  votes_down: number;
+  votes_resuelta: number;
 }
 
 export type ReportStatus = 'pendiente' | 'resuelto' | 'rechazado';

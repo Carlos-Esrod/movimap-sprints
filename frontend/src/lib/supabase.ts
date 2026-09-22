@@ -98,6 +98,8 @@ export async function createIncident(incident: {
   longitude: number;
   image?: File;
   created_by: string;
+  place_name?: string | null;
+  address?: string | null;
 }) {
   const session = await getSession();
   const userId = incident.created_by || session?.user?.id;
@@ -129,6 +131,8 @@ export async function createIncident(incident: {
       latitude: incident.latitude,
       longitude: incident.longitude,
       image_url: imageUrl,
+      place_name: incident.place_name || null,
+      address: incident.address || null,
       status: 'nuevo',
       created_by: userId,
     })
@@ -237,6 +241,34 @@ export async function updateReportStatus(id: string, status: 'resuelto' | 'recha
 
 export async function getHeatmapData() {
   return await supabase.rpc('get_heatmap_data');
+}
+
+export async function findNearbyIncidents(lat: number, lng: number, category?: string, radiusM = 50) {
+  return await supabase.rpc('find_nearby_incidents', {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_m: radiusM,
+    p_category: category || null,
+  });
+}
+
+export async function reverseGeocode(lat: number, lng: number): Promise<{ place_name: string | null; address: string | null }> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const address = data?.display_name || null;
+    const place_name =
+      data?.address?.amenity ||
+      data?.address?.building ||
+      data?.address?.road ||
+      data?.name ||
+      address;
+    return { place_name: place_name || null, address };
+  } catch (error) {
+    console.error('Error reverse geocoding:', error);
+    return { place_name: null, address: null };
+  }
 }
 
 export async function getUserIncidents(userId: string) {

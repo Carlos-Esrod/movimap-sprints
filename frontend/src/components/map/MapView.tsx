@@ -11,6 +11,7 @@ interface MapViewProps {
   selectedIncident?: Incident | null;
   center?: [number, number];
   zoom?: number;
+  focus?: { lat: number; lng: number; zoom?: number } | null;
   onLocationSelect?: (lat: number, lng: number) => void;
   selectedLocation?: [number, number] | null;
   interactive?: boolean;
@@ -50,6 +51,18 @@ function InvalidateOnResize() {
   return null;
 }
 
+function FocusController({ focus }: { focus?: { lat: number; lng: number; zoom?: number } | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (focus) {
+      map.flyTo([focus.lat, focus.lng], focus.zoom ?? 16);
+    }
+  }, [focus, map]);
+
+  return null;
+}
+
 function SelectedLocationMarker({ location }: { location: [number, number] | null }) {
   if (!location) return null;
   return (
@@ -84,7 +97,7 @@ function IncidentPopupContent({ incident, onClick }: { incident: Incident; onCli
   );
 }
 
-function MapView({ incidents = [], selectedIncident, center, zoom, onLocationSelect, selectedLocation, interactive, showLocationControls = true, onIncidentClick }: MapViewProps) {
+function MapView({ incidents = [], selectedIncident, center, zoom, focus, onLocationSelect, selectedLocation, interactive, showLocationControls = true, onIncidentClick }: MapViewProps) {
   const mapCenter = center || CENTER;
   const mapZoom = zoom || INITIAL_ZOOM;
 
@@ -111,6 +124,7 @@ function MapView({ incidents = [], selectedIncident, center, zoom, onLocationSel
     <div className="relative w-full h-full">
       <MapContainer center={mapCenter} zoom={mapZoom} minZoom={MIN_ZOOM} maxZoom={MAX_ZOOM} zoomControl={!isMobile} style={{ height: '100%', width: '100%' }}>
         <InvalidateOnResize />
+        <FocusController focus={focus} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

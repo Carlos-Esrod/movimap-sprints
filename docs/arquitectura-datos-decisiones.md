@@ -46,7 +46,7 @@ Movimap es una plataforma de reportes de incidencias de accesibilidad urbana
 | D6 | **Eliminar el rol `institution`** y la página/web de dashboard del frontend. |
 | D7 | **No bypasear RLS** con `security definer` para operaciones de usuario; solo se permite el RLS correcto. |
 | D8 | **Ampliar el producto de datos BI** (más atributos de negocio + vista de denuncias anonimizadas) y **canal de entrega solo-lectura `bi_reader`** vía session pooler, con documentación de onboarding y términos para el cliente. |
-
+| D9 | **Deduplicar reportes al crear** (Fase 1): RPC `find_nearby_incidents` (haversine, 100 m) + `place_name`/`address` vía reverse-geocoding Nominatim. La capa BI incluye estas columnas para que crezca con la feature. |
 ---
 
 ## 3. Decisión D1 — Tabla `incident_votes`

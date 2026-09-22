@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import MapView from '@/components/map/MapView';
 import ReportCard from '@/components/reports/ReportCard';
 import Icon from '@/components/ui/Icon';
-import { supabase, getIncidents, getPublicIncidentById } from '@/lib/supabase';
-import { INCIDENT_CATEGORIES, STATUS_LABELS, NOMINATIM_URL, NOMINATIM_LIMIT } from '@/lib/constants';
-import type { Incident, Profile, SearchResult } from '@/types';
+import { supabase, getIncidents, getPublicIncidentById, findNearbyIncidents } from '@/lib/supabase';
+import { INCIDENT_CATEGORIES, STATUS_LABELS, NOMINATIM_URL, NOMINATIM_LIMIT, formatCategory } from '@/lib/constants';
+import type { Incident, Profile, SearchResult, NearbyIncident } from '@/types';
 
 interface HomePageProps {
   profile: Profile | null;
@@ -20,6 +20,10 @@ function HomePage({ profile }: HomePageProps) {
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [showIncidentList, setShowIncidentList] = useState(false);
   const [listOpen, setListOpen] = useState(true);
+  const [destination, setDestination] = useState<{ lat: number; lng: number; display_name: string } | null>(null);
+  const [destIncidents, setDestIncidents] = useState<NearbyIncident[]>([]);
+  const [destLoading, setDestLoading] = useState(false);
+  const [showDestList, setShowDestList] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -87,6 +91,30 @@ function HomePage({ profile }: HomePageProps) {
   function handleSelectResult(result: SearchResult) {
     setSearchQuery(result.display_name);
     setSearchResults([]);
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    setDestination({ lat, lng, display_name: result.display_name });
+    setShowIncidentList(false);
+    setShowDestList(true);
+    loadNearby(lat, lng);
+  }
+
+  async function loadNearby(lat: number, lng: number) {
+    setDestLoading(true);
+    const { data } = await findNearbyIncidents(lat, lng, undefined, 250);
+    setDestIncidents(data || []);
+    setDestLoading(false);
+  }
+
+  function closeDestPanel() {
+    setDestination(null);
+    setDestIncidents([]);
+    setShowDestList(false);
+  }
+
+  function handleOpenNearby(n: NearbyIncident) {
+    setShowDestList(false);
+    navigate(`/incident/${n.id}`);
   }
 
   function handleOpenDetail(incident: Incident) {
@@ -191,6 +219,51 @@ function HomePage({ profile }: HomePageProps) {
     </div>
   );
 
+  const destItems = (
+    <div className="p-3 space-y-2">
+      {destLoading ? (
+        <div className="flex items-center gap-2 text-label-sm text-on-surface-variant py-4 justify-center">
+          <span className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></span>
+          Buscando reportes...
+        </div>
+      ) : destIncidents.length === 0 ? (
+        <p className="text-label-sm text-on-surface-variant text-center py-8">No hay reportes cerca de este lugar</p>
+      ) : (
+        destIncidents.map(n => (
+          <div
+            key={n.id}
+            onClick={() => handleOpenNearby(n)}
+            className="bg-surface-container-lowest border border-outline-variant rounded-lg p-3 cursor-pointer hover:bg-surface-container-low transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <h4 className="text-label-md font-semibold text-on-surface">{formatCategory(n.category)}</h4>
+              <span className="shrink-0 text-label-sm text-on-surface-variant">{Math.round(n.distance_m)} m</span>
+            </div>
+            <p className="text-label-sm text-on-surface-variant mt-1 line-clamp-2">{n.description}</p>
+            <div className="flex items-center gap-2 mt-2 text-label-sm text-on-surface-variant">
+              <span className="inline-flex items-center gap-1"><Icon name="thumbs-up" size={13} /> {n.confirmation_count}</span>
+              <span>·</span>
+              <span>Score {n.score}</span>
+              {n.place_name && <><span>·</span><span className="truncate">{n.place_name}</span></>}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const destHeader = (
+    <div className="px-4 py-3 border-b border-outline-variant flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-label-md font-semibold text-on-surface">Reportes cercanos</p>
+        <p className="text-label-sm text-on-surface-variant truncate">{destination?.display_name}</p>
+      </div>
+      <button onClick={closeDestPanel} className="p-1.5 rounded-full hover:bg-surface-container">
+        <Icon name="close" />
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-1 flex overflow-hidden">
@@ -212,8 +285,26 @@ function HomePage({ profile }: HomePageProps) {
             incidents={filteredIncidents}
             selectedIncident={selectedIncident}
             showLocationControls
+            focus={destination ? { lat: destination.lat, lng: destination.lng, zoom: 16 } : null}
             onIncidentClick={(inc) => { setSelectedIncident(inc); handleOpenDetail(inc); }}
           />
+
+          {destination && (
+            <div className="absolute top-20 left-4 z-[1000] hidden lg:flex flex-col w-80 max-h-[70vh] bg-surface-container-lowest rounded-xl shadow-elevation-soft overflow-hidden">
+              {destHeader}
+              <div className="flex-1 overflow-y-auto">{destItems}</div>
+            </div>
+          )}
+
+          {destination && (
+            <button
+              onClick={() => setShowDestList(true)}
+              className="absolute top-16 left-20 z-[1000] lg:hidden bg-surface-container-lowest rounded-full shadow-elevation-soft hover:shadow-elevation-hover transition-all flex items-center gap-2 px-3 py-1.5 text-label-sm font-semibold text-on-surface max-w-[70%]"
+            >
+              <Icon name="locate" className="text-primary" size={14} />
+              <span className="truncate">{destIncidents.length} cerca</span>
+            </button>
+          )}
 
           <div className="absolute top-4 right-4 z-[1000] hidden lg:flex">
             <button
@@ -258,6 +349,18 @@ function HomePage({ profile }: HomePageProps) {
             </div>
             <div className="px-4 pt-3">{filterPanel}</div>
             <div className="flex-1 overflow-y-auto">{incidentList}</div>
+          </div>
+        </div>
+      )}
+
+      {destination && showDestList && (
+        <div className="fixed inset-0 z-[2000] lg:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={closeDestPanel} />
+          <div className="absolute bottom-0 left-0 right-0 bg-surface-container-lowest rounded-t-2xl max-h-[85vh] flex flex-col">
+            <div className="sticky top-0 bg-surface-container-lowest border-b border-outline-variant rounded-t-2xl">
+              {destHeader}
+            </div>
+            <div className="flex-1 overflow-y-auto">{destItems}</div>
           </div>
         </div>
       )}
