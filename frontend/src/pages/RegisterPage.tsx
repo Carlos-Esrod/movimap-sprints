@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signUp } from '@/lib/supabase';
+import { Input } from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
+import Alert from '@/components/ui/Alert';
+import Icon from '@/components/ui/Icon';
 
 function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -29,98 +34,47 @@ function RegisterPage() {
 
   if (showConfirmMessage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-full max-w-sm p-8 bg-white rounded-lg shadow">
-          <svg className="mx-auto h-12 w-12 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          <h2 className="mt-4 text-2xl font-bold text-center text-gray-800">Verifica tu email</h2>
-          <p className="mt-2 text-sm text-center text-gray-600">
-            Hemos enviado un email de confirmación a
-          </p>
-          <p className="mt-1 text-sm text-center font-medium text-gray-800">{email}</p>
-          <p className="mt-3 text-sm text-center text-gray-600">
-            Por favor revisa tu bandeja de entrada y haz clic en el link de confirmación para activar tu cuenta.
-          </p>
-          <div className="mt-6 space-y-3">
-            <button
-              onClick={() => navigate('/login')}
-              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
-            >
-              Ir al login
-            </button>
-            <button
-              onClick={() => setShowConfirmMessage(false)}
-              className="w-full text-blue-600 py-2 rounded hover:bg-blue-50 transition text-sm"
-            >
-              Volver al registro
-            </button>
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <Card className="w-full max-w-sm p-8">
+          <div className="mx-auto h-12 w-12 rounded-full bg-secondary-fixed-dim/40 flex items-center justify-center">
+            <Icon name="check-circle" className="text-on-surface" size={24} />
           </div>
-        </div>
+          <h2 className="mt-4 text-headline-md font-bold text-center text-on-surface">Verifica tu email</h2>
+          <p className="mt-2 text-body-md text-center text-on-surface-variant">Hemos enviado un email de confirmación a</p>
+          <p className="mt-1 text-body-md text-center font-semibold text-on-surface">{email}</p>
+          <p className="mt-3 text-body-md text-center text-on-surface-variant">Por favor revisa tu bandeja de entrada y haz clic en el link de confirmación para activar tu cuenta.</p>
+          <div className="mt-6 space-y-3">
+            <Button onClick={() => navigate('/login')} fullWidth>Ir al login</Button>
+            <Button variant="ghost" fullWidth onClick={() => setShowConfirmMessage(false)}>Volver al registro</Button>
+          </div>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm p-8 bg-white rounded-lg shadow">
-        <h1 className="text-2xl font-bold text-center mb-2">Movimap</h1>
-        <p className="text-center text-gray-600 mb-6">Crea tu cuenta para participar</p>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm p-8">
+        <div className="flex flex-col items-center mb-6">
+          <img src="/icon-192.png" alt="Movimap" className="w-14 h-14 rounded-xl object-cover" />
+          <h1 className="mt-3 text-headline-md font-bold text-on-surface">Movimap</h1>
+          <p className="text-body-md text-on-surface-variant">Crea tu cuenta para participar</p>
+        </div>
 
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <Alert tone="error" className="mb-4">{error}</Alert>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Creando cuenta...' : 'Crear cuenta'}
-          </button>
+          <Input label="Nombre" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input label="Contraseña" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Button type="submit" size="lg" fullWidth loading={loading}>Crear cuenta</Button>
         </form>
 
-        <p className="text-center text-sm text-gray-600 mt-4">
+        <p className="text-center text-body-md text-on-surface-variant mt-4">
           ¿Ya tienes cuenta?{' '}
-          <Link to="/login" className="text-blue-600 hover:underline">Inicia sesión</Link>
+          <Link to="/login" className="text-primary font-semibold hover:underline">Inicia sesión</Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

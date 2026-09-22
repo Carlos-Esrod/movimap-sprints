@@ -7,7 +7,9 @@ import RegisterPage from '@/pages/RegisterPage';
 import ReportPage from '@/pages/ReportPage';
 import ActivityPage from '@/pages/ActivityPage';
 import AdminPage from '@/pages/AdminPage';
-import { supabase, getProfile } from '@/lib/supabase';
+import IncidentDetailPage from '@/pages/IncidentDetailPage';
+import AppLayout from '@/components/layout/AppLayout';
+import { supabase, getProfile, signOut } from '@/lib/supabase';
 
 function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -30,26 +32,38 @@ function App() {
     setLoading(false);
   }
 
+  async function handleLogout() {
+    await signOut();
+    window.location.reload();
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-on-surface-variant">Cargando...</p>
         </div>
       </div>
     );
   }
 
+  const authed = profile !== null;
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage profile={profile} />} />
-        <Route path="/login" element={profile ? <Navigate to="/" /> : <LoginPage />} />
-        <Route path="/register" element={profile ? <Navigate to="/" /> : <RegisterPage />} />
-        <Route path="/report" element={profile ? <ReportPage profile={profile} /> : <Navigate to="/login" />} />
-        <Route path="/activity" element={profile ? <ActivityPage /> : <Navigate to="/login" />} />
-        <Route path="/admin" element={profile?.role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
+        <Route path="/login" element={authed ? <Navigate to="/" /> : <LoginPage />} />
+        <Route path="/register" element={authed ? <Navigate to="/" /> : <RegisterPage />} />
+
+        <Route element={<AppLayout profile={profile} onLogout={handleLogout} />}>
+          <Route path="/" element={<HomePage profile={profile} />} />
+          <Route path="/report" element={authed ? <ReportPage profile={profile!} /> : <Navigate to="/login" />} />
+          <Route path="/activity" element={authed ? <ActivityPage /> : <Navigate to="/login" />} />
+          <Route path="/incident/:id" element={<IncidentDetailPage profile={profile} />} />
+          <Route path="/admin" element={profile?.role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

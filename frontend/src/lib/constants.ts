@@ -1,4 +1,6 @@
 import type { IncidentCategory } from '@/types';
+import { Sparkles, CheckCircle2, Clock3, ThumbsUp, Ban, Hourglass } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 export const ZONE_BOUNDS = {
   minLat: -33.440,
@@ -13,6 +15,15 @@ export const MIN_ZOOM = 13;
 export const MAX_ZOOM = 19;
 
 export const UMBRAL_OCULTAR = -3;
+
+export const MARKER_COLOR_PRIMARY = '#002f35';
+export const MARKER_COLOR_ACCENT = '#ff6b6b';
+
+export const SEVERITY_MARKER_COLORS: Record<number, string> = {
+  1: '#30666d', // surface-tint (teal) - Informativo
+  2: '#ff6b6b', // secondary-container (coral) - Moderado
+  3: '#ae2f34', // secondary (rojo profundo) - Grave
+};
 
 export const PHOTO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -72,6 +83,15 @@ export const STATUS_LABELS: Record<string, string> = {
   resuelto: 'Resuelto',
   rechazado: 'Rechazado',
   expirado: 'Expirado',
+};
+
+export const STATUS_ICONS: Record<string, LucideIcon> = {
+  nuevo: Sparkles,
+  confirmado: ThumbsUp,
+  en_revision: Clock3,
+  resuelto: CheckCircle2,
+  rechazado: Ban,
+  expirado: Hourglass,
 };
 
 export function isInsideZone(lat: number, lng: number): boolean {

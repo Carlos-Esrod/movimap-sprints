@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MapView from '@/components/map/MapView';
-import NavBar from '@/components/NavBar';
-import IncidentDetailModal from '@/components/IncidentDetailModal';
-import { supabase, getIncidents, getPublicIncidentById, signIn, signOut } from '@/lib/supabase';
-import { INCIDENT_CATEGORIES, SEVERITY_LEVELS, STATUS_COLORS, STATUS_LABELS, NOMINATIM_URL, NOMINATIM_LIMIT } from '@/lib/constants';
+import ReportCard from '@/components/reports/ReportCard';
+import Icon from '@/components/ui/Icon';
+import { supabase, getIncidents, getPublicIncidentById } from '@/lib/supabase';
+import { INCIDENT_CATEGORIES, STATUS_LABELS, NOMINATIM_URL, NOMINATIM_LIMIT } from '@/lib/constants';
 import type { Incident, Profile, SearchResult } from '@/types';
 
 interface HomePageProps {
@@ -14,16 +14,12 @@ interface HomePageProps {
 function HomePage({ profile }: HomePageProps) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [showLoginForm, setShowLoginForm] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [showIncidentList, setShowIncidentList] = useState(false);
-  const [reportOrigin, setReportOrigin] = useState<'gps' | 'map' | null>(null);
+  const [listOpen, setListOpen] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -54,23 +50,7 @@ function HomePage({ profile }: HomePageProps) {
         const old = payload.old as Incident;
         if (old?.id) setIncidents(prev => prev.filter(i => i.id !== old.id));
       })
-      .on('system', { event: 'error' }, (event) => {
-        console.error('Realtime channel error:', event);
-      })
-      .on('system', { event: 'disconnect' }, () => {
-        console.warn('Realtime channel disconnected');
-      })
-      .on('system', { event: 'connected' }, () => {
-        console.log('Realtime channel connected');
-      })
-      .subscribe((status) => {
-        console.log('Realtime subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('Realtime subscription established');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('Failed to subscribe to realtime updates');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -109,33 +89,11 @@ function HomePage({ profile }: HomePageProps) {
     setSearchResults([]);
   }
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoginError('');
-    const { error } = await signIn(email, password);
-    if (error) {
-      setLoginError(error.message);
-    } else {
-      setShowLoginForm(false);
-      setEmail('');
-      setPassword('');
-      window.location.reload();
+  function handleOpenDetail(incident: Incident) {
+    if (window.innerWidth < 768) {
+      setShowIncidentList(false);
     }
-  }
-
-  function handleLogout() {
-    signOut();
-    window.location.reload();
-  }
-
-  function handleNavigateToReport(origin: 'gps' | 'map') {
-    setReportOrigin(origin);
-    navigate('/report');
-  }
-
-  function handleVoteSuccess(updated: Incident) {
-    setIncidents(prev => prev.map(i => i.id === updated.id ? updated : i));
-    setSelectedIncident(updated);
+    navigate(`/incident/${incident.id}`);
   }
 
   const filteredIncidents = incidents.filter(i => {
@@ -144,130 +102,107 @@ function HomePage({ profile }: HomePageProps) {
     return true;
   });
 
-  return (
-    <div className="h-screen flex flex-col">
-      <NavBar profile={profile} onLogout={handleLogout} />
-
-      {/* Login form overlay for desktop */}
-      {showLoginForm && (
-        <div className="md:block hidden bg-white border-b shadow-sm p-4 z-[550]">
-          <form onSubmit={handleLogin} className="max-w-md mx-auto flex gap-2 flex-col sm:flex-row">
-            <input
-              type="email"
-              placeholder="Correo electrónico"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            <input
-              type="password"
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-              Entrar
-            </button>
-            <a href="/register" className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 text-center">
-              Registrarse
-            </a>
-          </form>
-          {loginError && <p className="text-red-500 text-xs mt-2 max-w-md mx-auto">{loginError}</p>}
-        </div>
-      )}
-
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className="w-0 lg:w-80 bg-white border-r overflow-y-auto z-10 shadow-lg transition-all duration-300">
-          <div className="p-3 border-b">
-            <input
-              type="text"
-              placeholder="Buscar dirección..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {searchResults.length > 0 && (
-              <div className="mt-2 border rounded-lg overflow-hidden">
-                {searchResults.map((result, idx) => (
-                  <button
-                    key={result.place_id}
-                    onClick={() => handleSelectResult(result)}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition ${
-                      idx !== searchResults.length - 1 ? 'border-b' : ''
-                    }`}
-                  >
-                    {result.display_name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 border-b space-y-2">
-            <div>
-              <label className="text-xs text-gray-500">Categoría</label>
-              <select
-                value={selectedCategory || ''}
-                onChange={(e) => setSelectedCategory(e.target.value || null)}
-                className="w-full mt-1 px-2 py-1 border text-sm rounded"
-              >
-                <option value="">Todas</option>
-                {INCIDENT_CATEGORIES.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Estado</label>
-              <select
-                value={selectedStatus || ''}
-                onChange={(e) => setSelectedStatus(e.target.value || null)}
-                className="w-full mt-1 px-2 py-1 border text-sm rounded"
-              >
-                <option value="">Todos</option>
-                {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="p-3">
-            <h3 className="text-sm font-medium mb-2">
-              Incidencias ({filteredIncidents.length})
-            </h3>
-            <div className="space-y-2">
-              {filteredIncidents.map(incident => (
-                <div
-                  key={incident.id}
-                  onClick={() => setSelectedIncident(incident)}
-                  className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition ${
-                    selectedIncident?.id === incident.id ? 'border-blue-500 bg-blue-50' : ''
-                  }`}
+  const filterPanel = (
+    <>
+      <div className="p-3 border-b border-outline-variant">
+        <div className="relative">
+          <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
+          <input
+            type="text"
+            placeholder="Buscar dirección..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-11 pl-9 pr-3 rounded-lg bg-surface-container-lowest border border-outline-variant text-sm focus:outline-none focus:border-primary"
+          />
+          {searchResults.length > 0 && (
+            <div className="mt-2 border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest absolute z-10 w-full">
+              {searchResults.map(result => (
+                <button
+                  key={result.place_id}
+                  onClick={() => handleSelectResult(result)}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-surface-container transition"
                 >
-                  <div className="flex items-start justify-between">
-                    <h4 className="font-medium text-sm">{INCIDENT_CATEGORIES.find(c => c.value === incident.category)?.label}</h4>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded"
-                      style={{
-                        backgroundColor: STATUS_COLORS[incident.status] + '20',
-                        color: STATUS_COLORS[incident.status]
-                      }}
-                    >
-                      {STATUS_LABELS[incident.status]}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">{incident.description.substring(0, 80)}...</p>
-                  <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                    <span>⚡ {SEVERITY_LEVELS.find(s => s.value === incident.severity)?.label}</span>
-                    <span>·</span>
-                    <span>{new Date(incident.created_at).toLocaleDateString('es-CL')}</span>
-                  </div>
-                </div>
+                  {result.display_name}
+                </button>
               ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-3 border-b border-outline-variant space-y-2">
+        <p className="text-label-sm text-on-surface-variant/60">Tipo de incidencia</p>
+        <div className="flex flex-wrap gap-2">
+          <ChipRow
+            label="Todas"
+            active={selectedCategory === null}
+            onClick={() => setSelectedCategory(null)}
+          />
+          {INCIDENT_CATEGORIES.map(cat => (
+            <ChipRow
+              key={cat.value}
+              label={cat.label}
+              active={selectedCategory === cat.value}
+              onClick={() => setSelectedCategory(selectedCategory === cat.value ? null : cat.value)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="p-3 border-b border-outline-variant space-y-2">
+        <p className="text-label-sm text-on-surface-variant/60">Estado</p>
+        <div className="flex flex-wrap gap-2">
+          <ChipRow
+            label="Todos"
+            active={selectedStatus === null}
+            onClick={() => setSelectedStatus(null)}
+          />
+          {Object.entries(STATUS_LABELS).map(([key, label]) => (
+            <ChipRow
+              key={key}
+              label={label}
+              active={selectedStatus === key}
+              onClick={() => setSelectedStatus(selectedStatus === key ? null : key)}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+  const incidentList = (
+    <div className="p-3">
+      <h3 className="text-label-md font-semibold text-on-surface mb-3">
+        Reportes recientes ({filteredIncidents.length})
+      </h3>
+      <div className="space-y-3">
+        {filteredIncidents.map(incident => (
+          <ReportCard
+            key={incident.id}
+            incident={incident}
+            selected={selectedIncident?.id === incident.id}
+            onSelect={(inc) => { setSelectedIncident(inc); handleOpenDetail(inc); }}
+          />
+        ))}
+        {filteredIncidents.length === 0 && (
+          <p className="text-label-sm text-on-surface-variant text-center py-8">No hay incidencias que coincidan</p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
+        <div
+          className={`hidden lg:flex flex-col shrink-0 bg-surface-container-lowest border-r border-outline-variant overflow-hidden transition-all duration-300 ease-in-out ${
+            listOpen ? 'w-96' : 'w-0 border-r-0'
+          }`}
+        >
+          <div className="w-96 flex flex-col h-full">
+            {filterPanel}
+            <div className="flex-1 overflow-y-auto">
+              {incidentList}
             </div>
           </div>
         </div>
@@ -277,36 +212,33 @@ function HomePage({ profile }: HomePageProps) {
             incidents={filteredIncidents}
             selectedIncident={selectedIncident}
             showLocationControls
-            onIncidentClick={setSelectedIncident}
+            onIncidentClick={(inc) => { setSelectedIncident(inc); handleOpenDetail(inc); }}
           />
 
-          <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2 md:hidden">
+          <div className="absolute top-4 right-4 z-[1000] hidden lg:flex">
+            <button
+              onClick={() => setListOpen(o => !o)}
+              className="bg-surface-container-lowest rounded-full shadow-elevation-soft hover:shadow-elevation-hover transition-all inline-flex items-center gap-1.5 px-5 py-1.5 text-sm font-semibold text-on-surface"
+              title={listOpen ? 'Cerrar panel de reportes' : 'Abrir panel de reportes'}
+            >
+              <Icon name="search" className="text-primary" size={16} />
+              <span>{listOpen ? 'Ocultar' : 'Reportes'}</span>
+            </button>
+          </div>
+
+          <div className="absolute top-4 left-4 z-[1000] flex lg:hidden">
             <button
               onClick={() => setShowIncidentList(true)}
-              className="bg-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center gap-2 px-3 py-2.5 text-sm font-medium hover:bg-gray-50"
+              className="bg-surface-container-lowest rounded-full shadow-elevation-soft hover:shadow-elevation-hover transition-all flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface"
             >
-              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <span className="text-sm">{filteredIncidents.length}</span>
+              <Icon name="locate" className="text-primary" size={18} />
+              <span>{filteredIncidents.length}</span>
             </button>
-
-            {profile && (
-              <button
-                onClick={() => handleNavigateToReport('gps')}
-                className="bg-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center w-14 h-14 hover:bg-blue-700 mx-auto"
-                title="Reportar incidencia"
-              >
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-            )}
           </div>
         </div>
       </div>
 
-      <div className="bg-white border-t px-4 py-2 flex items-center justify-center gap-6 text-xs text-gray-600 z-10 hidden md:flex">
+      <div className="hidden lg:flex bg-surface-container-lowest border-t border-outline-variant px-4 py-2 items-center justify-center gap-6 text-label-sm text-on-surface-variant">
         <span><strong>{filteredIncidents.length}</strong> activas</span>
         <span>·</span>
         <span>{incidents.filter(i => i.status === 'resuelto').length} resueltas</span>
@@ -315,123 +247,34 @@ function HomePage({ profile }: HomePageProps) {
       </div>
 
       {showIncidentList && (
-        <div className="fixed inset-0 z-[2000] md:hidden">
-          <div
-            className="absolute inset-0 bg-black bg-opacity-50"
-            onClick={() => setShowIncidentList(false)}
-          />
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between rounded-t-2xl">
-              <h3 className="font-bold text-gray-800">Incidencias ({filteredIncidents.length})</h3>
-              <button
-                onClick={() => setShowIncidentList(false)}
-                className="p-1 hover:bg-gray-100 rounded-full"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+        <div className="fixed inset-0 z-[2000] lg:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowIncidentList(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-surface-container-lowest rounded-t-2xl max-h-[85vh] flex flex-col">
+            <div className="sticky top-0 bg-surface-container-lowest border-b border-outline-variant px-4 py-3 flex items-center justify-between rounded-t-2xl">
+              <h3 className="font-semibold text-on-surface">Reportes recientes ({filteredIncidents.length})</h3>
+              <button onClick={() => setShowIncidentList(false)} className="p-1.5 rounded-full hover:bg-surface-container">
+                <Icon name="close" />
               </button>
             </div>
-
-            <div className="p-3 border-b">
-              <input
-                type="text"
-                placeholder="Buscar dirección..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {searchResults.length > 0 && (
-                <div className="mt-2 border rounded-lg overflow-hidden">
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.place_id}
-                      onClick={() => handleSelectResult(result)}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                    >
-                      {result.display_name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 border-b space-y-2">
-              <div>
-                <label className="text-xs text-gray-500">Categoría</label>
-                <select
-                  value={selectedCategory || ''}
-                  onChange={(e) => setSelectedCategory(e.target.value || null)}
-                  className="w-full mt-1 px-2 py-1 border text-sm rounded"
-                >
-                  <option value="">Todas</option>
-                  {INCIDENT_CATEGORIES.map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Estado</label>
-                <select
-                  value={selectedStatus || ''}
-                  onChange={(e) => setSelectedStatus(e.target.value || null)}
-                  className="w-full mt-1 px-2 py-1 border text-sm rounded"
-                >
-                  <option value="">Todos</option>
-                  {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="p-4">
-              <div className="space-y-2">
-                {filteredIncidents.map(incident => (
-                  <div
-                    key={incident.id}
-                    onClick={() => {
-                      setSelectedIncident(incident);
-                      setShowIncidentList(false);
-                    }}
-                    className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition ${
-                      selectedIncident?.id === incident.id ? 'border-blue-500 bg-blue-50' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <h4 className="font-medium text-sm">{INCIDENT_CATEGORIES.find(c => c.value === incident.category)?.label}</h4>
-                      <span
-                        className="text-xs px-2 py-0.5 rounded"
-                        style={{
-                          backgroundColor: STATUS_COLORS[incident.status] + '20',
-                          color: STATUS_COLORS[incident.status]
-                        }}
-                      >
-                        {STATUS_LABELS[incident.status]}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{incident.description.substring(0, 80)}...</p>
-                    <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                      <span>⚡ {SEVERITY_LEVELS.find(s => s.value === incident.severity)?.label}</span>
-                      <span>·</span>
-                      <span>{new Date(incident.created_at).toLocaleDateString('es-CL')}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div className="px-4 pt-3">{filterPanel}</div>
+            <div className="flex-1 overflow-y-auto">{incidentList}</div>
           </div>
         </div>
       )}
-
-      {selectedIncident && (
-        <IncidentDetailModal
-          incident={selectedIncident}
-          onClose={() => setSelectedIncident(null)}
-          onVoteSuccess={handleVoteSuccess}
-        />
-      )}
     </div>
+  );
+}
+
+function ChipRow({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-label-sm font-semibold transition-colors ${
+        active ? 'bg-secondary-container text-secondary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

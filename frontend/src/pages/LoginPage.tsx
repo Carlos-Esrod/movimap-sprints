@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signIn } from '@/lib/supabase';
-
+import { Input } from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
+import Alert from '@/components/ui/Alert';
+import Icon from '@/components/ui/Icon';
 
 function LoginPage() {
   const [email, setEmail] = useState('');
@@ -26,52 +30,41 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm p-8 bg-white rounded-lg shadow">
-        <h1 className="text-2xl font-bold text-center mb-2">Movimap</h1>
-        <p className="text-center text-gray-600 mb-6">Inicia sesión para continuar</p>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm p-8">
+        <div className="flex flex-col items-center mb-6">
+          <img src="/icon-192.png" alt="Movimap" className="w-14 h-14 rounded-xl object-cover" />
+          <h1 className="mt-3 text-headline-md font-bold text-on-surface">Movimap</h1>
+          <p className="text-body-md text-on-surface-variant">Inicia sesión para continuar</p>
+        </div>
 
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{error}</div>
-        )}
+        {error && <Alert tone="error" className="mb-4">{error}</Alert>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Ingresando...' : 'Iniciar sesión'}
-          </button>
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Input
+            label="Contraseña"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Button type="submit" size="lg" fullWidth loading={loading}>
+            Iniciar sesión
+          </Button>
         </form>
 
-        <p className="text-center text-sm text-gray-600 mt-4">
+        <p className="text-center text-body-md text-on-surface-variant mt-4">
           ¿No tienes cuenta?{' '}
-          <Link to="/register" className="text-blue-600 hover:underline">Regístrate</Link>
+          <Link to="/register" className="text-primary font-semibold hover:underline">Regístrate</Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 }
