@@ -203,7 +203,7 @@
 **para que** quede registrada para su revisión por la comunidad y la autoridad.
 
 **Criterios de aceptación:**
-- Formulario con categoría, descripción (100–500 caracteres), severidad (1–3),
+- Formulario con categoría, descripción (hasta 500 caracteres, sin mínimo), severidad (1–3),
   fecha de observación, duración (temporal/permanente) y ubicación.
 - Validación completa con zod.
 - Selección de ubicación por **GPS** o por **punto en el mapa**.
@@ -515,7 +515,7 @@ superan un umbral,
 
 - [ ] Verificar de forma automatizada el ocultamiento por umbral (D3) en el mapa/detalle.
 - [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.
-- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar las vistas BI ampliadas.
+- [ ] Verificar `00_esquema_actual.sql` en Supabase y las vistas BI ampliadas.
 - [ ] Emitir credenciales/roles por cliente para la venta formal del dato (multi-cliente).
 - [ ] Definir el modelo de **venta de datos** (plan de suscripción, permisos de lectura por cliente).
 - [ ] Notificaciones y flujo de seguimiento por el usuario.

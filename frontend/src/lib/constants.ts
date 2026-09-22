@@ -28,7 +28,7 @@ export const SEVERITY_MARKER_COLORS: Record<number, string> = {
 export const PHOTO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-export const DESCRIPTION_MIN_LENGTH = 100;
+export const DESCRIPTION_MIN_LENGTH = 1;
 export const DESCRIPTION_MAX_LENGTH = 500;
 
 export const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';

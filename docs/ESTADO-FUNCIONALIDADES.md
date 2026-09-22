@@ -25,25 +25,18 @@ geo-referenciada se exporta a herramientas de BI externas (p. ej. **Power BI**).
 
 ```
 movimap/
-├── backend/migraciones/   # scripts SQL organizados por esquema
-│   ├── legacy/            # esquema antiguo (ya aplicado, NO re-ejecutar)
-│   └── nuevo/             # esquema actual normalizado (votos, denuncias, BI)
-├── frontend/              # app React (Vite + Supabase)
-├── docs/                  # documentación (datos, BI, estado)
+├── backend/migraciones/nuevo/   # scripts SQL del esquema actual normalizado (idempotentes)
+├── frontend/                    # app React (Vite + Supabase)
+├── docs/                        # documentación (datos, BI, estado)
 └── README.md
 ```
 
-### Historial de migraciones aplicado en producción (orden)
+### Orden de aplicación de migraciones (proyecto nuevo desde cero)
 
-En producción se aplicó:
-1. `legacy/01` … `legacy/07` (esquema previo + fix intermedio)
-2. `nuevo/09_normalize_votes_and_reports.sql` (normalización votos/denuncias)
-3. Capa BI: `nuevo/10_bi_export.sql`, `nuevo/12_expose_bi_schema.sql`,
-   `nuevo/13_analytics_view.sql`, `nuevo/14_bi_reader_role.sql`
-4. Ampliación BI (D8): `nuevo/15_expand_bi_views.sql`
-
-> Para un proyecto nuevo desde cero se usa `nuevo/00_esquema_actual.sql`
-> y luego `nuevo/01_seed_demo.sql`. No mezclar con `legacy/`.
+Para un proyecto nuevo se aplica, en orden:
+1. `nuevo/00_esquema_actual.sql` (esquema completo: tablas, BI, deduplicación)
+2. `nuevo/14_bi_reader_role.sql` (rol `bi_reader`)
+3. `nuevo/01_seed_demo.sql` (datos de prueba)
 
 ---
 
@@ -54,7 +47,7 @@ En producción se aplicó:
 - **`profiles`** — extensiones de `auth.users`. Campos: `display_name`, `role`
   (`'user' | 'admin'`), `organization_name`, timestamps.
 - **`incidents`** — incidencias reportadas. Campos: categoría, descripción
-  (100–500 chars), lat/lng, severidad (1–3), fecha de observación, duración
+  (hasta 500 caracteres, sin mínimo), lat/lng, severidad (1–3), fecha de observación, duración
   estimada (`temporal | permanente`), estado, `image_url`, `resuelto_threshold`
   (umbral configurable por incidencia, por defecto 3), `created_by`,
   `resolved_at`, `resolved_by`. **Sin** columnas denormalizadas `score` /
@@ -186,7 +179,7 @@ En producción se aplicó:
 ### 3.4 Reporte de incidencia
 
 - Formulario completo con **validación (zod)**: categoría, descripción
-  (100–500 caracteres), severidad (1–3), fecha de observación, duración,
+  (hasta 500 caracteres, sin mínimo), severidad (1–3), fecha de observación, duración,
   ubicación y foto opcional.
 - Selección de ubicación por **GPS** o por **punto en el mapa** (con selector
   interactivo y fullscreen en móvil).
@@ -251,6 +244,6 @@ En producción se aplicó:
 - [ ] Verificar el ocultamiento por umbral (D3) en el mapa/detalle con una
       incidencia que supere el umbral.
 - [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.
-- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar las vistas BI ampliadas.
+- [ ] Verificar `00_esquema_actual.sql` en Supabase y las vistas BI ampliadas.
 - [ ] Emitir credenciales/roles por cliente para la venta formal del dato (multi-cliente).
 ```

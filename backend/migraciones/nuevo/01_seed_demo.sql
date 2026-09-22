@@ -2,7 +2,7 @@
 -- migraciones/nuevo/01_seed_demo.sql
 -- Datos de ejemplo para el esquema normalizado
 -- ------------------------------------------------------------
--- Requisitos previos (igual que en legacy/06):
+-- Requisitos previos:
 --   1. Crear el usuario admin en Authentication → Users:
 --      Email: admin@movimap.cl | Auto Confirm: SI
 --   2. Darle rol admin:
@@ -31,7 +31,16 @@ begin
     ('vereda_deteriorada', 'Vereda con grietas profundas y desniveles considerables en el tramo entre Eléctra y Nueva de Lyon. El estado del pavimento dificulta notablemente el desplazamiento de personas con andadores y sillas de ruedas.', -33.4267, -70.6159, 2, current_date - 4, 'permanente', 'confirmado'),
     ('rampa_inexistente', 'No existe rampa de accesibilidad en la intersección de Apoquindo con Manuel Montt. Solo hay escalones que impiden el acceso a personas con movilidad reducida que necesitan utilizar esta vía peatonal.', -33.4311, -70.6188, 3, current_date - 10, 'permanente', 'nuevo'),
     ('otro', 'Hueco grande y profundo en la acera a la altura del metro Manuel Montt. Representa un peligro considerable para peatones y personas con movilidad reducida que transitan por esta zona de alta circulación.', -33.4285, -70.6196, 2, current_date - 1, 'temporal', 'nuevo')
-  ) as t(category, description, latitude, longitude, severity, observed_at, estimated_duration, status);
+  ) as t(category, description, latitude, longitude, severity, observed_at, estimated_duration, status)
+  where not exists (
+    select 1
+    from public.incidents i
+    where i.created_by = admin_id
+      and i.category = t.category
+      and i.latitude = t.latitude
+      and i.longitude = t.longitude
+      and i.description = t.description
+  );
 
   -- 2) votos demo (usuario admin sobre la vereda cortada)
   --    El constraint unique(incident_id, user_id) evita duplicados.

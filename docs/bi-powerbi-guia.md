@@ -16,7 +16,7 @@
 | `public.analytics_incident_daily` | Espejo de `bi.incident_daily` expuesto vía PostgREST (export CSV) | Solo `service_role` |
 | `public.analytics_incident_reports_daily` | Espejo de `bi.incident_reports_daily` vía PostgREST (export CSV) | Solo `service_role` |
 
-> Definiciones canónicas en `backend/migraciones/nuevo/15_expand_bi_views.sql`.
+> Definiciones canónicas en `backend/migraciones/nuevo/00_esquema_actual.sql`.
 
 ### Columnas de `bi.incident_daily`
 
@@ -130,6 +130,6 @@ Variantes útiles:
 
 ## 5. Migraciones de la capa BI
 
-En Supabase se ejecutaron (o deben ejecutarse) para esta capa:
-`10_bi_export.sql`, `12_expose_bi_schema.sql`, `13_analytics_view.sql`,
-`14_bi_reader_role.sql` y **`15_expand_bi_views.sql`** (ampliación D8).
+En Supabase, la capa BI la proveen:
+- `00_esquema_actual.sql` (esquema completo + vistas BI ampliadas + grants `service_role` + deduplicación)
+- `14_bi_reader_role.sql` (rol `bi_reader`)

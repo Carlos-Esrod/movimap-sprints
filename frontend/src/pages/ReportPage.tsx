@@ -11,7 +11,7 @@ import EvidenceUploader from '@/components/reports/EvidenceUploader';
 import Icon from '@/components/ui/Icon';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { createIncident, findNearbyIncidents, reverseGeocode, voteOnIncident } from '@/lib/supabase';
-import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MIN_LENGTH, DESCRIPTION_MAX_LENGTH, PHOTO_MAX_SIZE_BYTES, PHOTO_ACCEPTED_TYPES, isInsideZone, CENTER } from '@/lib/constants';
+import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MAX_LENGTH, PHOTO_MAX_SIZE_BYTES, PHOTO_ACCEPTED_TYPES, isInsideZone, CENTER } from '@/lib/constants';
 import type { Profile, NearbyIncident } from '@/types';
 
 interface ReportPageProps {
@@ -138,8 +138,8 @@ function ReportPage({ profile }: ReportPageProps) {
       setError('Todos los campos son obligatorios');
       return;
     }
-    if (description.length < DESCRIPTION_MIN_LENGTH || description.length > DESCRIPTION_MAX_LENGTH) {
-      setError(`La descripción debe tener entre ${DESCRIPTION_MIN_LENGTH} y ${DESCRIPTION_MAX_LENGTH} caracteres`);
+    if (description.length > DESCRIPTION_MAX_LENGTH) {
+      setError(`La descripción no puede superar los ${DESCRIPTION_MAX_LENGTH} caracteres`);
       return;
     }
     if (!isInsideZone(latitude, longitude)) {
@@ -390,7 +390,7 @@ function ReportPage({ profile }: ReportPageProps) {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 placeholder="Describe la incidencia con detalle..."
-                hint={`${description.length}/${DESCRIPTION_MAX_LENGTH} caracteres (mínimo ${DESCRIPTION_MIN_LENGTH})`}
+                hint={`${description.length}/${DESCRIPTION_MAX_LENGTH} caracteres`}
                 required
               />
               <p className="mt-4 text-label-md font-semibold text-on-surface">Severidad *</p>

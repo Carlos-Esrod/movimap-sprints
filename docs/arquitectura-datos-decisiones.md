@@ -345,7 +345,7 @@ capa BI se amplía con atributos de negocio útiles para el análisis urbano y s
 define un **canal de entrega comercial** de solo lectura, seguro y reutilizable
 por cada cliente.
 
-### Ampliación de la capa BI (`15_expand_bi_views.sql`)
+### Ampliación de la capa BI (`00_esquema_actual.sql`)
 - **`bi.incident_daily`** se expande: añade `description`, `observed_date`,
   `updated_at`, `resolved_at`, `has_resolved_by` (sin identidad), `image_url`,
   **`resolution_days`**, y conteos de denuncias por estado
@@ -396,42 +396,22 @@ por cada cliente.
 
 ## 11. Inventario de archivos SQL
 
-Los scripts se organizan en `backend/migraciones/` según el esquema al que
-pertenecen. Ver `backend/migraciones/README.md`.
-
-### `backend/migraciones/legacy/` — esquema antiguo (ya aplicado, no re-ejecutar)
+Los scripts se organizan en `backend/migraciones/nuevo/`. Ver
+`backend/migraciones/README.md`.
 
 | Archivo | Estado | Acción |
 |---------|--------|--------|
-| `01_create_tables.sql` | Aplicado | Solo referencia (documentación). No re-ejecutar. |
-| `02_create_triggers_and_functions.sql` | Aplicado | El `09` hizo los `drop`/`create` de triggers. |
-| `03_create_rpc_functions.sql` | Aplicado | Contenía `get_dashboard_stats` (obsoleto) y `get_heatmap_data` (superado por `09`). |
-| `04_create_rls_policies.sql` | Aplicado | RLS del esquema antiguo (incl. `incident_actions`). |
-| `05_create_storage.sql` | Aplicado | Bucket de fotos (aún vigente). |
-| `06_setup_admin_and_demo_data.sql` | Aplicado | Seed del esquema antiguo (insertaba en `incident_actions`; ver `nuevo/01_seed_demo.sql`). |
-| `07_fix_votes_and_reports.sql` | Aplicado | Fix intermedio (creó `incident_reports`), superado por `09`. |
-
-### `backend/migraciones/nuevo/` — esquema actual normalizado
-
-| Archivo | Estado | Acción |
-|---------|--------|--------|
-| `00_esquema_actual.sql` | Creado | Esquema canónico completo del estado actual (proyecto nuevo desde cero). |
+| `00_esquema_actual.sql` | Creado | Esquema canónico completo del estado actual (proyecto nuevo desde cero, idempotente). |
 | `01_seed_demo.sql` | Creado | Seed del esquema nuevo (votos en `incident_votes`). |
-| `09_normalize_votes_and_reports.sql` | Aplicado | Migración que transformó el legacy en el actual. |
-| ~~`08_create_rpc_votes.sql`~~ | **Eliminado** (no ejecutado) | Descartado: usaba `security definer`. |
+| `14_bi_reader_role.sql` | Creado | Rol read-only `bi_reader` para Power BI. |
 
-### Pasos de migración (resumen, a detallar en `09`)
+### Orden de aplicación (proyecto nuevo)
 
-1. Crear `incident_votes` + índices + RLS.
-2. Migrar datos existentes de `incident_actions`:
-   `'confirmar' → 'up'`, `'rechazar' → 'down'`, `'marcar_resuelta' → 'resuelta'`.
-3. `alter table incidents add column resuelto_threshold`.
-4. Crear vistas `incidents_with_stats`, `incidents_public` y esquema/vistas `bi`.
-5. Dropear `score`/`confirmation_count` de `incidents`.
-6. Dropear triggers de `incident_actions` y la tabla (si se elimina) re-creando
-   el de auditoría sobre `incident_votes`.
-7. Ejecutar **solo** las migraciones pendientes en producción; nunca re-ejecutar
-   las ya aplicadas sin `drop` previo.
+`00_esquema_actual.sql` → `14_bi_reader_role.sql` → `01_seed_demo.sql`.
+
+> Los archivos restantes (anteriores migraciones del esquema legacy) se retiraron
+> del repositorio junto con la carpeta `legacy/`; todo el estado final vive en
+> `00` + `14` + `15` + `16`.
 
 ### Rollback
 
@@ -462,22 +442,19 @@ pertenecen. Ver `backend/migraciones/README.md`.
 
 ## 13. Pendientes / siguientes pasos
 
-- [x] Crear `backend/migraciones/nuevo/09_normalize_votes_and_reports.sql`.
+- [x] Normalizar votos/denuncias (consolidado en `nuevo/00_esquema_actual.sql`; el script `09` se retiró del repo).
 - [x] Implementar cambios de frontend (§9).
 - [x] Eliminar `DashboardPage`, ruta `/dashboard` y `get_dashboard_stats`.
 - [x] Eliminar rol `institution` (tipos, NavBar, seed).
 - [x] Fix denuncia: `reportIncident` ya no pide el retorno de la fila con `.select()` (RLS solo-admin en `incident_reports`) → insert simple sin SELECT; se trata el duplicado (`23505`) como "ya denunciada".
 - [x] Corregir realtime de `HomePage` para refrescar desde `incidents_public` (columnas desnormalizadas eliminadas en D2).
-- [x] Crear `backend/migraciones/nuevo/10_bi_export.sql` (capa BI en esquema `bi`).
-- [x] Crear `backend/migraciones/nuevo/11_drop_institution_role.sql` (D6 backend).
-- [x] Crear `backend/migraciones/nuevo/12_expose_bi_schema.sql` (grants `authenticator`/`service_role`).
-- [x] Crear `backend/migraciones/nuevo/13_analytics_view.sql` (vista `public.analytics_incident_daily`).
+- [x] Capa BI (esquema `bi`, vistas, grants `authenticator`/`service_role` y `public.analytics_incident_daily`) — consolidado en `nuevo/00` y `nuevo/15` (los scripts `10`–`13` se retiraron del repo).
 - [x] Crear `backend/migraciones/nuevo/14_bi_reader_role.sql` (rol read-only `bi_reader` para Power BI).
 - [x] BI funcional vía PostgREST: `public.analytics_incident_daily` exportable a CSV (`Accept: text/csv`) con `service_role`; anon/authenticated bloqueados. Esquema `bi` no se exige exponer en el dashboard (PostgREST no lo refleja).
 - [x] Exportar CSV con Power BI (conector Postgres con rol `bi_reader` a `bi.incident_daily`, o `curl -H "Accept: text/csv"` con `service_role`).
-- [x] **D8** — Crear `backend/migraciones/nuevo/15_expand_bi_views.sql` (ampliación de `bi.incident_daily` + `bi.incident_reports_daily` anonimizada).
+- [x] **D8** — Ampliar la capa BI en `backend/migraciones/nuevo/00_esquema_actual.sql` (`bi.incident_daily` + `bi.incident_reports_daily` anonimizada).
 - [x] **D8** — Documentos de producto: `docs/data-dictionary.md`, `docs/bi-client-onboarding.md` (con resolución del certificado CA) y `docs/terms-of-use.md`.
 - [x] **D8** — Actualizar `docs/bi-powerbi-guia.md` con las vistas ampliadas y el fix de certificado.
-- [ ] Aplicar `15_expand_bi_views.sql` en Supabase y verificar `bi.incident_daily` / `bi.incident_reports_daily`.
+- [ ] Verificar en Supabase `00_esquema_actual.sql` y que `bi.incident_daily` / `bi.incident_reports_daily` queden correctas.
 - [ ] Emitir credenciales por cliente (rol `bi_reader` o claves de lectura dedicadas) para la venta formal.
 - [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.

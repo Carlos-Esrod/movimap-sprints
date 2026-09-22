@@ -3,13 +3,10 @@
 -- ESQUEMA ACTUAL (normalizado) — versión canónica
 -- ------------------------------------------------------------
 -- Este archivo representa el estado final del modelo de datos
--- tras la normalización votos/denuncias (ver 09).
+-- normalizado (votos/denuncias + deduplicación). Es idempotente.
 -- Úsalo para:
 --   * documentar/referenciar el esquema vigente, o
 --   * preparar un proyecto Supabase nuevo desde cero.
---
--- NO combinar con las migraciones de ../legacy (esquema previo).
--- El historial aplicado en producción fue: legacy/01..07 + nuevo/09.
 -- ============================================================
 
 -- ============================================
@@ -35,7 +32,7 @@ create table if not exists public.incidents (
                         'rampa_inexistente', 'obstaculo_fisico', 'ascensor_fuera_servicio',
                         'falta_iluminacion', 'otro'
                       )),
-  description        text not null check (length(description) between 100 and 500),
+  description        text not null check (length(description) between 1 and 500),
   latitude           numeric not null,
   longitude          numeric not null,
   severity           int not null check (severity between 1 and 3),
@@ -45,6 +42,8 @@ create table if not exists public.incidents (
                         'nuevo', 'confirmado', 'en_revision', 'resuelto', 'rechazado', 'expirado'
                       )),
   image_url          text,
+  place_name         text,
+  address            text,
   resuelto_threshold int not null default 3 check (resuelto_threshold >= 1),
   created_by         uuid not null references public.profiles(id),
   created_at         timestamptz not null default now(),
@@ -52,6 +51,18 @@ create table if not exists public.incidents (
   resolved_at        timestamptz,
   resolved_by        uuid references public.profiles(id)
 );
+
+-- Ajuste idempotente: elimina el mínimo de 100 caracteres de la descripción.
+-- Se mantiene solo el máximo (500). Al estar la tabla ya creada en producción,
+-- se hace drop/add del constraint (seguro de re-ejecutar).
+alter table public.incidents drop constraint if exists incidents_description_check;
+alter table public.incidents
+  add constraint incidents_description_check check (length(description) between 1 and 500);
+
+-- Ajuste idempotente: contexto de lugar para deduplicación (D9/Fase 1).
+alter table public.incidents
+  add column if not exists place_name text,
+  add column if not exists address   text;
 
 -- votos (up / down / resuelta), un voto por usuario e incidencia
 create table if not exists public.incident_votes (
@@ -173,50 +184,70 @@ alter table public.incident_reports enable row level security;
 alter table public.audit_log enable row level security;
 
 -- profiles
+drop policy if exists "Anyone can view profiles" on public.profiles;
 create policy "Anyone can view profiles" on public.profiles for select to public using (true);
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile" on public.profiles for update to authenticated
   using (auth.uid() = id) with check (auth.uid() = id);
+drop policy if exists "Admin can update any profile" on public.profiles;
 create policy "Admin can update any profile" on public.profiles for update to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'))
   with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+drop policy if exists "Trigger can insert profiles" on public.profiles;
 create policy "Trigger can insert profiles" on public.profiles for insert to service_role with check (true);
 
 -- incidents
+drop policy if exists "Anyone can view incidents" on public.incidents;
 create policy "Anyone can view incidents" on public.incidents for select to public using (true);
+drop policy if exists "Authenticated users can create incidents" on public.incidents;
 create policy "Authenticated users can create incidents" on public.incidents for insert to authenticated
   with check (auth.uid() = created_by);
+drop policy if exists "Creator can update own incident" on public.incidents;
 create policy "Creator can update own incident" on public.incidents for update to authenticated
   using (auth.uid() = created_by) with check (auth.uid() = created_by);
+drop policy if exists "Admin can update any incident" on public.incidents;
 create policy "Admin can update any incident" on public.incidents for update to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'))
   with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+drop policy if exists "Admin can delete incidents" on public.incidents;
 create policy "Admin can delete incidents" on public.incidents for delete to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
 
 -- incident_votes
+drop policy if exists "Anyone can view votes" on public.incident_votes;
 create policy "Anyone can view votes" on public.incident_votes for select to public using (true);
+drop policy if exists "Users can create own votes" on public.incident_votes;
 create policy "Users can create own votes" on public.incident_votes for insert to authenticated
   with check (auth.uid() = user_id);
+drop policy if exists "Users can update own votes" on public.incident_votes;
 create policy "Users can update own votes" on public.incident_votes for update to authenticated
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "Users can delete own votes" on public.incident_votes;
 create policy "Users can delete own votes" on public.incident_votes for delete to authenticated
   using (auth.uid() = user_id);
 
 -- incident_reports
+drop policy if exists "Users can create own reports" on public.incident_reports;
 create policy "Users can create own reports" on public.incident_reports for insert to authenticated
   with check (auth.uid() = reported_by);
+drop policy if exists "Users can update own reports" on public.incident_reports;
 create policy "Users can update own reports" on public.incident_reports for update to authenticated
   using (auth.uid() = reported_by) with check (auth.uid() = reported_by);
+drop policy if exists "Only admin can view reports" on public.incident_reports;
 create policy "Only admin can view reports" on public.incident_reports for select to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+drop policy if exists "Admin can update reports" on public.incident_reports;
 create policy "Admin can update reports" on public.incident_reports for update to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'))
   with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+drop policy if exists "Admin can delete reports" on public.incident_reports;
 create policy "Admin can delete reports" on public.incident_reports for delete to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
 
 -- audit_log
+drop policy if exists "System can insert audit log" on public.audit_log;
 create policy "System can insert audit log" on public.audit_log for insert to authenticated with check (true);
+drop policy if exists "Only admin can view audit log" on public.audit_log;
 create policy "Only admin can view audit log" on public.audit_log for select to authenticated
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
 
@@ -228,6 +259,7 @@ with (security_invoker = true) as
 select
   i.id, i.category, i.description, i.latitude, i.longitude, i.severity,
   i.observed_at, i.estimated_duration, i.status, i.image_url,
+  i.place_name, i.address,
   i.created_by, i.created_at, i.updated_at, i.resolved_at, i.resolved_by,
   i.resuelto_threshold,
   coalesce(v.votes_up, 0)        as votes_up,
@@ -270,6 +302,8 @@ select
   i.resolved_by is not null  as has_resolved_by,
   i.latitude,
   i.longitude,
+  i.place_name,
+  i.address,
   i.resuelto_threshold,
   i.image_url,
   round(extract(epoch from (i.resolved_at - i.created_at)) / 86400.0, 2)
@@ -328,11 +362,23 @@ create or replace view public.analytics_incident_reports_daily
 with (security_invoker = true) as
 select * from bi.incident_reports_daily;
 
-grant usage on schema bi to authenticator, service_role, bi_reader;
-grant select on bi.incident_daily to service_role, bi_reader;
-grant select on bi.incident_reports_daily to service_role, bi_reader;
+grant usage on schema bi to authenticator, service_role;
+grant select on bi.incident_daily to service_role;
+grant select on bi.incident_reports_daily to service_role;
 revoke all on bi.incident_daily from public, anon, authenticated;
 revoke all on bi.incident_reports_daily from public, anon, authenticated;
+
+-- Otorga acceso a `bi_reader` solo si el rol existe. Se crea aparte en
+-- 14_bi_reader_role.sql (roles separados). Permite que 00_esquema_actual.sql
+-- se ejecute en un proyecto nuevo sin depender de ese rol.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'bi_reader') then
+    grant usage on schema bi to bi_reader;
+    grant select on bi.incident_daily to bi_reader;
+    grant select on bi.incident_reports_daily to bi_reader;
+  end if;
+end $$;
 
 grant select on public.analytics_incident_daily to service_role;
 grant select on public.analytics_incident_reports_daily to service_role;
@@ -364,21 +410,117 @@ end;
 $$ language plpgsql security definer;
 
 -- ============================================
+-- RPC: incidencias cercanas (deduplicación Fase 1)
+-- ============================================
+drop function if exists public.find_nearby_incidents(numeric, numeric, numeric, text);
+
+create or replace function public.find_nearby_incidents(
+  p_lat      numeric,
+  p_lng      numeric,
+  p_radius_m numeric default 100,
+  p_category text default null
+)
+returns table (
+  id                uuid,
+  category          text,
+  description       text,
+  latitude          numeric,
+  longitude         numeric,
+  severity          int,
+  status            text,
+  place_name        text,
+  address           text,
+  distance_m        integer,
+  score             bigint,
+  confirmation_count bigint,
+  votes_up          bigint,
+  votes_down        bigint,
+  votes_resuelta    bigint
+)
+language plpgsql security definer
+as $$
+declare
+  v_radius_deg numeric;
+  v_min_lat numeric;
+  v_max_lat numeric;
+  v_min_lng numeric;
+  v_max_lng numeric;
+begin
+  v_radius_deg := p_radius_m / 111320.0;
+  v_min_lat := p_lat - v_radius_deg;
+  v_max_lat := p_lat + v_radius_deg;
+  v_min_lng := p_lng - (p_radius_m / (111320.0 * cos(radians(p_lat))));
+  v_max_lng := p_lng + (p_radius_m / (111320.0 * cos(radians(p_lat))));
+
+  return query
+  select
+    i.id,
+    i.category,
+    i.description,
+    i.latitude,
+    i.longitude,
+    i.severity,
+    i.status,
+    i.place_name,
+    i.address,
+    round(
+      6371000.0 * 2 * asin(sqrt(
+        power(sin(radians(i.latitude - p_lat) / 2), 2) +
+        cos(radians(p_lat)) * cos(radians(i.latitude)) *
+        power(sin(radians((i.longitude - p_lng) / 2)), 2)
+      ))
+    )::int as distance_m,
+    coalesce(v.votes_up, 0) - coalesce(v.votes_down, 0) as score,
+    coalesce(v.votes_up, 0) as confirmation_count,
+    coalesce(v.votes_up, 0) as votes_up,
+    coalesce(v.votes_down, 0) as votes_down,
+    coalesce(v.votes_resuelta, 0) as votes_resuelta
+  from public.incidents i
+  left join (
+    select incident_id,
+           count(*) filter (where vote_type = 'up')       as votes_up,
+           count(*) filter (where vote_type = 'down')     as votes_down,
+           count(*) filter (where vote_type = 'resuelta') as votes_resuelta
+    from public.incident_votes
+    group by incident_id
+  ) v on v.incident_id = i.id
+  where i.latitude between v_min_lat and v_max_lat
+    and i.longitude between v_min_lng and v_max_lng
+    and i.status not in ('rechazado', 'expirado')
+    and coalesce(v.votes_resuelta, 0) < i.resuelto_threshold
+    and (p_category is null or i.category = p_category)
+    and 6371000.0 * 2 * asin(sqrt(
+          power(sin(radians(i.latitude - p_lat) / 2), 2) +
+          cos(radians(p_lat)) * cos(radians(i.latitude)) *
+          power(sin(radians((i.longitude - p_lng) / 2)), 2)
+        )) <= p_radius_m
+  order by distance_m asc;
+end;
+$$;
+
+grant execute on function public.find_nearby_incidents(numeric, numeric, numeric, text) to authenticated, anon;
+
+-- ============================================
 -- STORAGE (bucket fotos)
 -- ============================================
 insert into storage.buckets (id, name, public)
 values ('incident-photos', 'incident-photos', true)
 on conflict do nothing;
 
+drop policy if exists "Anyone can view incident photos" on storage.objects;
 create policy "Anyone can view incident photos" on storage.objects for select
   to public using ( bucket_id = 'incident-photos' );
+drop policy if exists "Authenticated users can upload incident photos" on storage.objects;
 create policy "Authenticated users can upload incident photos" on storage.objects for insert
   to authenticated with check ( bucket_id = 'incident-photos' and (storage.foldername(name))[1] = auth.uid()::text );
+drop policy if exists "Users can update own incident photos" on storage.objects;
 create policy "Users can update own incident photos" on storage.objects for update
   to authenticated using ( bucket_id = 'incident-photos' and (storage.foldername(name))[1] = auth.uid()::text )
   with check ( bucket_id = 'incident-photos' and (storage.foldername(name))[1] = auth.uid()::text );
+drop policy if exists "Users can delete own incident photos" on storage.objects;
 create policy "Users can delete own incident photos" on storage.objects for delete
   to authenticated using ( bucket_id = 'incident-photos' and (storage.foldername(name))[1] = auth.uid()::text );
+drop policy if exists "Admin can delete any photo" on storage.objects;
 create policy "Admin can delete any photo" on storage.objects for delete
   to authenticated using ( bucket_id = 'incident-photos'
     and exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') );
