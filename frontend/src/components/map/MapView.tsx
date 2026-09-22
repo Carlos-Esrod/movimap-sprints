@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import LocationControls from './LocationControls';
 import type { Incident } from '@/types';
-import { INCIDENT_CATEGORIES, CATEGORY_COLORS, CENTER, INITIAL_ZOOM, MIN_ZOOM, MAX_ZOOM } from '@/lib/constants';
+import { INCIDENT_CATEGORIES, CENTER, INITIAL_ZOOM, MIN_ZOOM, MAX_ZOOM, MARKER_COLOR_ACCENT, MARKER_COLOR_PRIMARY, SEVERITY_MARKER_COLORS } from '@/lib/constants';
 
 interface MapViewProps {
   incidents?: Incident[];
@@ -19,7 +19,7 @@ interface MapViewProps {
 }
 
 const customIcon = (color: string) => new Icon({
-  iconUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="${encodeURIComponent(color)}" d="M12 0C5.373 0 0 5.373 0 12c0 9 12 24 12 24s12-15 12-24C24 5.373 18.627 0 12 0z"/><circle fill="white" cx="12" cy="12" r="5"/></svg>`)}`,
+  iconUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="${color}" d="M12 0C5.373 0 0 5.373 0 12c0 9 12 24 12 24s12-15 12-24C24 5.373 18.627 0 12 0z"/><circle fill="white" cx="12" cy="12" r="5"/></svg>`)}`,
   iconSize: [24, 36],
   popupAnchor: [0, -36],
 });
@@ -35,10 +35,25 @@ function LocationSelector({ onLocationSelect, interactive }: { onLocationSelect?
   return null;
 }
 
+function InvalidateOnResize() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+
+  return null;
+}
+
 function SelectedLocationMarker({ location }: { location: [number, number] | null }) {
   if (!location) return null;
   return (
-    <Marker position={location} icon={customIcon('#ff0000')}>
+    <Marker position={location} icon={customIcon(MARKER_COLOR_PRIMARY)}>
       <Popup>Ubicación seleccionada</Popup>
     </Marker>
   );
@@ -95,6 +110,7 @@ function MapView({ incidents = [], selectedIncident, center, zoom, onLocationSel
   return (
     <div className="relative w-full h-full">
       <MapContainer center={mapCenter} zoom={mapZoom} minZoom={MIN_ZOOM} maxZoom={MAX_ZOOM} zoomControl={!isMobile} style={{ height: '100%', width: '100%' }}>
+        <InvalidateOnResize />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -105,7 +121,7 @@ function MapView({ incidents = [], selectedIncident, center, zoom, onLocationSel
           <Marker
             key={incident.id}
             position={[incident.latitude, incident.longitude]}
-            icon={customIcon(CATEGORY_COLORS[incident.category] || '#95a5a6')}
+            icon={customIcon(SEVERITY_MARKER_COLORS[incident.severity] || MARKER_COLOR_ACCENT)}
           >
             <Popup maxWidth={300} className="incident-popup">
               <IncidentPopupContent incident={incident} onClick={onIncidentClick} />
