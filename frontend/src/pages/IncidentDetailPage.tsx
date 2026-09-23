@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPublicIncidentById, voteOnIncident, reportIncident, getMyVote } from '@/lib/supabase';
 import { INCIDENT_CATEGORIES, SEVERITY_LEVELS, STATUS_LABELS } from '@/lib/constants';
+import { computeScore } from '@/lib/utils';
 import MapView from '@/components/map/MapView';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -129,9 +130,11 @@ function IncidentDetailPage({ profile }: IncidentDetailPageProps) {
             <Card>
               <p className="text-body-md text-on-surface-variant leading-relaxed">{incident.description}</p>
               <div className="flex items-center gap-2 mt-4 text-label-sm text-on-surface-variant">
-                <span className="inline-flex items-center gap-1"><Icon name="comments" size={14} /> {incident.confirmation_count} apoyos</span>
+                <span className="inline-flex items-center gap-1"><Icon name="thumbs-up" size={14} /> {incident.votes_up} confirmaciones</span>
                 <span>·</span>
-                <span>Score: {incident.score}</span>
+                <span className="inline-flex items-center gap-1"><Icon name="thumbs-down" size={14} /> {incident.votes_down} rechazos</span>
+                <span>·</span>
+                <span>Score: {computeScore(incident.votes_up, incident.votes_down)}</span>
               </div>
             </Card>
 
@@ -148,7 +151,7 @@ function IncidentDetailPage({ profile }: IncidentDetailPageProps) {
                   fullWidth
                   className={myVote === 'up' ? 'bg-secondary-fixed-dim/40 border-secondary-container' : ''}
                 >
-                  <Icon name="thumbs-up" size={18} /> Confirmar
+                  <Icon name="thumbs-up" size={18} /> Confirmar ({incident.votes_up})
                 </Button>
                 <Button
                   variant="outline"
@@ -157,7 +160,7 @@ function IncidentDetailPage({ profile }: IncidentDetailPageProps) {
                   fullWidth
                   className={myVote === 'down' ? 'bg-secondary-fixed-dim/40 border-secondary-container' : ''}
                 >
-                  <Icon name="thumbs-down" size={18} /> Rechazar
+                  <Icon name="thumbs-down" size={18} /> Rechazar ({incident.votes_down})
                 </Button>
                 <Button
                   variant="outline"
@@ -166,8 +169,24 @@ function IncidentDetailPage({ profile }: IncidentDetailPageProps) {
                   fullWidth
                   className={myVote === 'resuelta' ? 'bg-secondary-fixed-dim/40 border-secondary-container' : ''}
                 >
-                  <Icon name="check" size={18} /> Resuelta
+                  <Icon name="check" size={18} /> Resuelta ({incident.votes_resuelta})
                 </Button>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {incident.status === 'resuelto' && (
+                  <Alert tone="success">Esta incidencia ya fue marcada como resuelta.</Alert>
+                )}
+                {incident.votes_down >= incident.downvote_threshold - 1 && incident.votes_resuelta < incident.resuelto_threshold && (
+                  <Alert tone="warning">
+                    Se ocultará automáticamente al llegar a {incident.downvote_threshold} rechazos (lleva {incident.votes_down}).
+                  </Alert>
+                )}
+                {incident.votes_resuelta >= incident.resuelto_threshold - 1 && (
+                  <Alert tone="warning">
+                    Se ocultará automáticamente al llegar a {incident.resuelto_threshold} votos de "resuelta" (lleva {incident.votes_resuelta}).
+                  </Alert>
+                )}
               </div>
 
               <div className="mt-4 pt-4 border-t border-outline-variant">

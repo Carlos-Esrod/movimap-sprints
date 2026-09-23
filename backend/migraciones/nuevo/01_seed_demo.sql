@@ -51,5 +51,36 @@ begin
     and not exists (select 1 from public.incident_votes v
                     where v.incident_id = i.id and v.user_id = admin_id);
 
-  raise notice 'Datos de prueba insertados (8 incidencias + 1 voto).';
+  -- 3) caso demo de ocultamiento automático por downvotes:
+  --    Se baja `downvote_threshold` a 1 en "rampa_inexistente" y se
+  --    agrega un voto "down" (la unicidad por usuario impide más de uno
+  --    con un solo usuario, por eso bajamos el umbral a 1 para
+  --    demostrar el ocultamiento). La incidencia queda oculta en
+  --    `incidents_public` pero sigue en BI y en admin.
+  update public.incidents
+    set downvote_threshold = 1
+    where category = 'rampa_inexistente';
+
+  insert into public.incident_votes (incident_id, user_id, vote_type, created_at)
+  select i.id, admin_id, 'down', now()
+  from public.incidents i
+  where i.category = 'rampa_inexistente'
+    and not exists (select 1 from public.incident_votes v
+                    where v.incident_id = i.id and v.user_id = admin_id
+                      and v.vote_type = 'down');
+
+  -- También ocultamos "otro" por umbral de resuelta (default 3 → 1).
+  update public.incidents
+    set resuelto_threshold = 1
+    where category = 'otro';
+
+  insert into public.incident_votes (incident_id, user_id, vote_type, created_at)
+  select i.id, admin_id, 'resuelta', now()
+  from public.incidents i
+  where i.category = 'otro'
+    and not exists (select 1 from public.incident_votes v
+                    where v.incident_id = i.id and v.user_id = admin_id
+                      and v.vote_type = 'resuelta');
+
+  raise notice 'Datos de prueba insertados (8 incidencias + votos).';
 end $$;

@@ -14,7 +14,11 @@ export const INITIAL_ZOOM = 15;
 export const MIN_ZOOM = 13;
 export const MAX_ZOOM = 19;
 
-export const UMBRAL_OCULTAR = -3;
+// Umbrales por defecto de ocultamiento automático de reportes.
+// Definidos aquí para cambiarlos en un solo lugar (igual que en
+// backend/migraciones/nuevo/16_umbral_downvotes.sql).
+export const DEFAULT_DOWNVOTE_THRESHOLD = 4;
+export const DEFAULT_RESUELTO_THRESHOLD = 3;
 
 export const MARKER_COLOR_PRIMARY = '#002f35';
 export const MARKER_COLOR_ACCENT = '#ff6b6b';

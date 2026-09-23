@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUserIncidents, getUserActions, getIncidents, signOut, supabase } from '@/lib/supabase';
 import { INCIDENT_CATEGORIES, SEVERITY_LEVELS } from '@/lib/constants';
+import { computeScore } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -46,7 +47,7 @@ function ActivityPage() {
     }
     if (activeTab === 'general') {
       const { data } = await getIncidents({ limit: 50 });
-      if (data) setGeneralIncidents([...data].sort((a, b) => b.score - a.score));
+      if (data) setGeneralIncidents([...data].sort((a, b) => computeScore(b.votes_up, b.votes_down) - computeScore(a.votes_up, a.votes_down)));
     }
     setLoading(false);
   }
@@ -76,7 +77,7 @@ function ActivityPage() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-label-sm text-on-surface-variant">
             <span>{SEVERITY_LEVELS.find(s => s.value === incident.severity)?.label}</span>
             <span>·</span>
-            <span>Score: {incident.score}</span>
+            <span>Score: {computeScore(incident.votes_up, incident.votes_down)}</span>
             <span>·</span>
             <span>{new Date(incident.created_at).toLocaleDateString('es-CL')}</span>
           </div>

@@ -5,6 +5,7 @@ import ReportCard from '@/components/reports/ReportCard';
 import Icon from '@/components/ui/Icon';
 import { supabase, getIncidents, getPublicIncidentById, findNearbyIncidents } from '@/lib/supabase';
 import { INCIDENT_CATEGORIES, STATUS_LABELS, NOMINATIM_URL, NOMINATIM_LIMIT, formatCategory } from '@/lib/constants';
+import { computeScore } from '@/lib/utils';
 import type { Incident, Profile, SearchResult, NearbyIncident } from '@/types';
 
 interface HomePageProps {
@@ -241,9 +242,9 @@ function HomePage({ profile }: HomePageProps) {
             </div>
             <p className="text-label-sm text-on-surface-variant mt-1 line-clamp-2">{n.description}</p>
             <div className="flex items-center gap-2 mt-2 text-label-sm text-on-surface-variant">
-              <span className="inline-flex items-center gap-1"><Icon name="thumbs-up" size={13} /> {n.confirmation_count}</span>
+              <span className="inline-flex items-center gap-1"><Icon name="thumbs-up" size={13} /> {n.votes_up}</span>
               <span>·</span>
-              <span>Score {n.score}</span>
+              <span>Score {computeScore(n.votes_up, n.votes_down)}</span>
               {n.place_name && <><span>·</span><span className="truncate">{n.place_name}</span></>}
             </div>
           </div>

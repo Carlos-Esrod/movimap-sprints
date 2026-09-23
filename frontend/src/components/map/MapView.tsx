@@ -80,7 +80,7 @@ function IncidentPopupContent({ incident, onClick }: { incident: Incident; onCli
       <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
         <span>⚡ Severidad: {incident.severity}</span>
         <span>·</span>
-        <span>👍 {incident.confirmation_count}</span>
+        <span>👍 {incident.votes_up}</span>
         <span>·</span>
         <span>{new Date(incident.created_at).toLocaleDateString('es-CL')}</span>
       </div>

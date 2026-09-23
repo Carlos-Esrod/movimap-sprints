@@ -39,14 +39,15 @@ Movimap es una plataforma de reportes de incidencias de accesibilidad urbana
 | # | Decisión |
 |---|----------|
 | D1 | Normalizar los votos en una tabla dedicada `incident_votes` con 3 opciones (`up`, `down`, `resuelta`). |
-| D2 | El score se **calcula dinámicamente** (vistas), sin columnas denormalizadas en `incidents`. |
-| D3 | `votos de "resuelta"` ocultan la incidencia al usuario final al superar un **umbral configurable por incidencia**. |
+| D2 | El score se **calcula en el frontend** (`votes_up − votes_down`). El backend y la capa BI sólo entregan **conteos** (`votes_up / votes_down / votes_resuelta`). No hay columnas denormalizadas en `incidents`. |
+| D3 | Los votos de "resuelta" ocultan la incidencia al usuario final al superar un **umbral configurable por incidencia**. |
 | D4 | Las denuncias/reportes se guardan en una tabla `incident_reports` **dedicada** a BI. |
 | D5 | Capa de datos para **Business Intelligence**, exportable a **CSV** para Power BI. |
 | D6 | **Eliminar el rol `institution`** y la página/web de dashboard del frontend. |
 | D7 | **No bypasear RLS** con `security definer` para operaciones de usuario; solo se permite el RLS correcto. |
 | D8 | **Ampliar el producto de datos BI** (más atributos de negocio + vista de denuncias anonimizadas) y **canal de entrega solo-lectura `bi_reader`** vía session pooler, con documentación de onboarding y términos para el cliente. |
 | D9 | **Deduplicar reportes al crear** (Fase 1): RPC `find_nearby_incidents` (haversine, 100 m) + `place_name`/`address` vía reverse-geocoding Nominatim. La capa BI incluye estas columnas para que crezca con la feature. |
+| D10 | **Ocultamiento automático por votos negativos.** Umbral `downvote_threshold` configurable por incidencia (default **4**). Al superarlo, el reporte se oculta **inmediatamente** de la vista pública. **Sin "revivir" manual**: el ocultamiento es 100% automático y el reporte sigue en BI / vista de admin para análisis. Esto permite que nadie revise reportes uno a uno; la moderación manual queda reservada para **denuncias de peso** (p. ej. imágenes inapropiadas, validación NSFW). |
 ---
 
 ## 3. Decisión D1 — Tabla `incident_votes`
@@ -74,8 +75,8 @@ create index idx_votes_user on public.incident_votes (user_id);
 | `vote_type` | Significado | Efecto en score | Efecto en visibilidad |
 |-------------|-------------|-----------------|-----------------------|
 | `up`        | Confirmar que la incidencia existe | `+1` | — |
-| `down`      | Rechazar / considerarla falsa | `-1` | — |
-| `resuelta`  | Votar que la incidencia ya no debe mostrarse | `0` | Ocultarla al superar el umbral |
+| `down`      | Rechazar / considerarla falsa | `-1` | Ocultarla automáticamente al superar `downvote_threshold` |
+| `resuelta`  | Votar que la incidencia ya no debe mostrarse | `0` | Ocultarla al superar `resuelto_threshold` |
 
 > Importante: `resuelta` **no** afecta el score up/down. Es un voto de tercera
 > opción. "Ocultar" no borra el registro: solo deja de mostrarse al usuario final.
@@ -94,14 +95,15 @@ que **no** se requiere `ON CONFLICT DO UPDATE` ni funciones `security definer`.
 
 ---
 
-## 4. Decisión D2 — Score/confirmaciones dinámicos
+## 4. Decisión D2 — Score/confirmaciones calculados en el frontend
 
 Se **eliminan** de `incidents` las columnas denormalizadas
-`score` y `confirmation_count`. El score y las confirmaciones se calculan
-siempre desde `incident_votes`.
+`score` y `confirmation_count`. El backend y la capa BI sólo entregan
+**conteos** (`votes_up / votes_down / votes_resuelta`); el **score** y las
+**confirmaciones** se calculan en el **cliente**:
 
-- `score = count(up) - count(down)`
-- `confirmation_count = count(up)`
+- `score = votes_up - votes_down` → helper `computeScore()` en `frontend/src/lib/utils.ts`
+- `confirmaciones = votes_up` → helper `confirmationCount()`
 - `votes_up / votes_down / votes_resuelta` como totales por incidencia.
 
 ### Vista `public.incidents_with_stats` (todos los datos, para admin)
@@ -113,9 +115,7 @@ select
   i.*,
   coalesce(v.votes_up, 0)        as votes_up,
   coalesce(v.votes_down, 0)      as votes_down,
-  coalesce(v.votes_resuelta, 0)  as votes_resuelta,
-  coalesce(v.votes_up, 0) - coalesce(v.votes_down, 0) as score,
-  coalesce(v.votes_up, 0)        as confirmation_count
+  coalesce(v.votes_resuelta, 0)  as votes_resuelta
 from public.incidents i
 left join (
   select incident_id,
@@ -158,6 +158,33 @@ alter table public.incidents
 - Se puede modificar por incidencia (admin / negocio).
 - La vista `incidents_public` excluye incidencias con
   `votes_resuelta >= resuelto_threshold`.
+
+---
+
+## 5.bis Decisión D10 — Umbral de votos negativos (`downvote_threshold`)
+
+El ocultamiento por **votos negativos** sigue el mismo patrón que `resuelta`,
+con un umbral **configurable por incidencia**:
+
+```sql
+alter table public.incidents
+  add column if not exists downvote_threshold int not null default 4
+    check (downvote_threshold >= 1);
+```
+
+- Valor por defecto: **4** (definido en `backend/migraciones/nuevo/16_umbral_downvotes.sql`
+  y en `frontend/src/lib/constants.ts` → `DEFAULT_DOWNVOTE_THRESHOLD`).
+- La vista `incidents_public` oculta al instante cuando
+  `votes_down >= downvote_threshold` **o** `votes_resuelta >= resuelto_threshold`
+  (además del estado `rechazado`/`expirado`).
+- **No existe "revivir" manual.** El flujo es 100% automático para que nadie
+  revise reportes uno a uno. El reporte oculto **no se borra**: sigue completo
+  en `incidents_with_stats` (admin) y en la capa BI con sus conteos.
+- La moderación manual del admin queda reservada para **denuncias de peso**
+  (tabla `incident_reports`): contenido inapropiado / imágenes NSFW (feature
+  planificada aparte, ver §14).
+- Cambiar los umbrales por reporte (si a futuro se necesita) se hace vía SQL
+  o UI de admin; al superarse se vuelven a ocultar automáticamente.
 
 ---
 
@@ -455,6 +482,26 @@ Los scripts se organizan en `backend/migraciones/nuevo/`. Ver
 - [x] **D8** — Ampliar la capa BI en `backend/migraciones/nuevo/00_esquema_actual.sql` (`bi.incident_daily` + `bi.incident_reports_daily` anonimizada).
 - [x] **D8** — Documentos de producto: `docs/data-dictionary.md`, `docs/bi-client-onboarding.md` (con resolución del certificado CA) y `docs/terms-of-use.md`.
 - [x] **D8** — Actualizar `docs/bi-powerbi-guia.md` con las vistas ampliadas y el fix de certificado.
-- [ ] Verificar en Supabase `00_esquema_actual.sql` y que `bi.incident_daily` / `bi.incident_reports_daily` queden correctas.
+- [ ] Verificar en Supabase `16_umbral_downvotes.sql` y que `bi.incident_daily` / `bi.incident_reports_daily` queden correctas.
+- [x] **D10** — Implementar umbral de votos negativos (`downvote_threshold`, default 4) y ocultamiento automático en `backend/migraciones/nuevo/16_umbral_downvotes.sql` (vistas, BI, RPCs). Ocultamiento 100% automático, **sin revive**.
+- [x] Mover el cálculo de `score`/`confirmation_count` al frontend (`computeScore` / `confirmationCount`); el backend y BI entregan solo conteos.
 - [ ] Emitir credenciales por cliente (rol `bi_reader` o claves de lectura dedicadas) para la venta formal.
-- [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento por umbral.
+- [ ] Pruebas end-to-end: votar, cambiar voto, denunciar y ocultamiento automático por umbral de downvotes y de resuelta.
+- [ ] (Siguiente paso, fuera de este hito) Revisión **NSFW** de imágenes antes del upload (frontend con `nsfwjs` o backend con edge function) y flujo de moderación denuncias de contenido inapropiado.
+
+---
+
+## 14. Feature planificada — revisión NSFW (fuera de este hito)
+
+Para que el rol admin se limite a **denuncias de peso** (contenido inapropiado)
+y no a encuestas de votos, se planifica una **revisión NSFW automática** de las
+imágenes al momento de subirlas:
+
+- **Frontend:** validación con `nsfwjs`/`tensorflow` en `ReportPage.tsx` antes
+  de subir a storage; bloqueo del upload si la imagen es `Porn`/`Hentai`/`Nsfw`.
+- **Backend (alternativa/refuerzo):** revisión server-side (edge function) que
+  rechaza o etiqueta la imagen antes de guardarla en el bucket `incident-photos`.
+- Las imágenes rechazadas quedan registradas en la capa BI como métrica de
+  contenido inapropiado, junto al conteo de denuncias.
+
+> No se implementa en este hito; queda documentado como siguiente paso.

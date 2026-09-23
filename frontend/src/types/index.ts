@@ -48,12 +48,11 @@ export interface Incident {
   image_url: string | null;
   place_name: string | null;
   address: string | null;
-  confirmation_count: number;
-  score: number;
   votes_up: number;
   votes_down: number;
   votes_resuelta: number;
   resuelto_threshold: number;
+  downvote_threshold: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -81,11 +80,11 @@ export interface NearbyIncident {
   place_name: string | null;
   address: string | null;
   distance_m: number;
-  score: number;
-  confirmation_count: number;
   votes_up: number;
   votes_down: number;
   votes_resuelta: number;
+  resuelto_threshold: number;
+  downvote_threshold: number;
 }
 
 export type ReportStatus = 'pendiente' | 'resuelto' | 'rechazado';

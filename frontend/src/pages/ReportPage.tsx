@@ -346,7 +346,7 @@ function ReportPage({ profile }: ReportPageProps) {
                         </p>
                         {n.place_name && <p className="text-label-sm text-on-surface-variant truncate">{n.place_name}</p>}
                         <p className="text-label-sm text-on-surface-variant">
-                          👍 {n.confirmation_count} · {Math.round(n.distance_m)} m · {n.description.substring(0, 60)}...
+                          👍 {n.votes_up} · {Math.round(n.distance_m)} m · {n.description.substring(0, 60)}...
                         </p>
                       </div>
                       <button

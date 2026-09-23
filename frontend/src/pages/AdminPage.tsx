@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAdminIncidents, getProfile, updateIncidentStatus, getReportedIncidents, updateReportStatus } from '@/lib/supabase';
 import { INCIDENT_CATEGORIES, SEVERITY_LEVELS, STATUS_LABELS, STATUS_COLORS } from '@/lib/constants';
+import { computeScore } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -177,7 +178,7 @@ function AdminPage() {
                     <span>·</span>
                     <span>{new Date(incident.created_at).toLocaleDateString('es-CL')}</span>
                     <span>·</span>
-                    <span>Score: {incident.score}</span>
+                    <span>Score: {computeScore(incident.votes_up, incident.votes_down)}</span>
                   </div>
                 </div>
               ))}
@@ -196,8 +197,12 @@ function AdminPage() {
                 <DetailField label="Duración" value={selectedIncident.estimated_duration} />
                 <DetailField label="Fecha observación" value={new Date(selectedIncident.observed_at).toLocaleDateString('es-CL')} />
                 <DetailField label="Estado" value={STATUS_LABELS[selectedIncident.status]} />
-                <DetailField label="Score" value={String(selectedIncident.score)} />
-                <DetailField label="Confirmaciones" value={String(selectedIncident.confirmation_count)} />
+                <DetailField label="Score" value={String(computeScore(selectedIncident.votes_up, selectedIncident.votes_down))} />
+                <DetailField label="Confirmaciones" value={String(selectedIncident.votes_up)} />
+                <DetailField label="Rechazos" value={String(selectedIncident.votes_down)} />
+                <DetailField label="Votos resuelta" value={String(selectedIncident.votes_resuelta)} />
+                <DetailField label="Umbr. rechazos" value={String(selectedIncident.downvote_threshold)} />
+                <DetailField label="Umbr. resuelta" value={String(selectedIncident.resuelto_threshold)} />
               </div>
 
               {selectedIncident.image_url && (

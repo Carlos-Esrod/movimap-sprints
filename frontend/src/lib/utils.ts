@@ -23,3 +23,14 @@ export function isWithinZone(lat: number, lng: number): boolean {
     lng <= ZONE_BOUNDS.maxLng
   );
 }
+
+// Score (veracidad) = confirmaciones (up) − rechazos (down).
+// Se calcula en el frontend; el backend sólo entrega conteos.
+export function computeScore(votes_up: number, votes_down: number): number {
+  return votes_up - votes_down;
+}
+
+// Confirmaciones = cantidad de votos "up" de la incidencia.
+export function confirmationCount(votes_up: number): number {
+  return votes_up;
+}
