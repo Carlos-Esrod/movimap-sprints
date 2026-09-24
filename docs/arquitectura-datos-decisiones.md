@@ -491,17 +491,25 @@ Los scripts se organizan en `backend/migraciones/nuevo/`. Ver
 
 ---
 
-## 14. Feature planificada — revisión NSFW (fuera de este hito)
+## 14. Feature — revisión NSFW y filtro de texto (implementado)
 
 Para que el rol admin se limite a **denuncias de peso** (contenido inapropiado)
-y no a encuestas de votos, se planifica una **revisión NSFW automática** de las
-imágenes al momento de subirlas:
+y no a encuestas de votos, se implementó una **moderación automática** de
+imágenes y de la descripción al momento de reportar:
 
-- **Frontend:** validación con `nsfwjs`/`tensorflow` en `ReportPage.tsx` antes
-  de subir a storage; bloqueo del upload si la imagen es `Porn`/`Hentai`/`Nsfw`.
-- **Backend (alternativa/refuerzo):** revisión server-side (edge function) que
-  rechaza o etiqueta la imagen antes de guardarla en el bucket `incident-photos`.
-- Las imágenes rechazadas quedan registradas en la capa BI como métrica de
-  contenido inapropiado, junto al conteo de denuncias.
+- **Imágenes (frontend, `nsfwjs`):** validación local en `ReportPage.tsx` con
+  `nsfwjs`/`tensorflow` antes de subir a storage; bloqueo del upload si la
+  imagen es `Porn`/`Hentai`/`Sexy` por sobre el umbral.
+- **Texto (frontend, `bad-words`):** la descripción se saneala al enviar,
+  reemplazando las malas palabras (incluye modismos chilenos) por `***`;
+  la descripción nunca se anula por completo.
+- **Descartado — capa con OpenAI `omni-moderation-latest`:** se evaluó una
+  segunda capa server-side (edge function) para refuerzo, pero se resolvió
+  **no usar** una API externa (límite de cuota sin tarjeta, complejidad de
+  deploy y dependencia de terceros). La moderación queda **100% local**.
+- **Descartado — registro en BI/capa de auditoría:** se consideró persistir
+  los rechazos como métrica (tabla de moderación), pero se dejó **fuera** por
+  decisión; el reject NSFW no se guarda (solo feedback al usuario).
 
-> No se implementa en este hito; queda documentado como siguiente paso.
+> Implementado en esta iteración; el deploy de storage y el esquema no se
+> modifica (no hay migración nueva asociada).

@@ -17,7 +17,7 @@ geo-referenciada se exporta a herramientas de BI externas (p. ej. **Power BI**).
 
 | Capa | Tecnologías |
 |------|-------------|
-| Frontend | React 18, TypeScript, Vite, TailwindCSS, Leaflet (`react-leaflet`), Supabase JS, `react-hook-form`/zod, `recharts`, `jspdf`/`html2canvas`, `lucide-react` |
+| Frontend | React 18, TypeScript, Vite, TailwindCSS, Leaflet (`react-leaflet`), Supabase JS, `react-hook-form`/zod, `recharts`, `nsfwjs` + TensorFlow.js, `bad-words`, `lucide-react` |
 | Backend | Supabase (PostgreSQL + Auth + Storage + Realtime + PostgREST) |
 | Datos | Esquema normalizado en PostgreSQL, capa BI (`bi` + `public.analytics_*`), rol de solo lectura `bi_reader` |
 
@@ -228,7 +228,28 @@ Para un proyecto nuevo se aplica, en orden:
 - Componentes compartidos: `NavBar`, `MapView`, `LocationControls`,
   `IncidentDetailModal`.
 
-### 3.9 Utilidades y tipos
+### 3.10 Moderación de contenido
+
+> Implementación actual: moderación **local** de imágenes (NSFW) y de la
+> descripción (malas palabras). Sin servicios de API externos.
+
+- **Imágenes (capa NSFW, `src/lib/imageModeration.ts`):** al elegir/cargar una
+  foto, se clasifica localmente con **nsfwjs** (TensorFlow.js). Si la imagen
+  supera los umbrales (`Porn`/`Hentai` > 0.6 o `Sexy` > 0.8) se bloquea
+  inmediatamente y el usuario debe reemplazar la evidencia. El modelo se carga
+  en `lazy` (primer uso) para no inflar el bundle inicial.
+- **Texto (capa local, `src/lib/textFilter.ts` + `src/data/profanity-words.json`):**
+  la descripción se sanitiza al enviar con **bad-words** (base en inglés) sumado
+  a la lista de `profanity-words.json` (español + modismos chilenos). Cada
+  palabra detectada se reemplaza por `***`; **no** se anula la descripción.
+  La detección es **obfuscación-robusta**: insensible a tildes, mayúsculas y
+  letras repetidas, y admite letras separadas por caracteres no-alfabéticos
+  (`m/i/e/r/d/a`, `mi er da`), manteniendo límites de palabra para evitar
+  falsos positivos. Para agregar palabras se edita el JSON (una cadena por entry).
+- **Registro:** por decisión, el reject NSFW **no** se persiste en la base de
+  datos (no hay tabla de auditoría de moderación).
+
+### 3.11 Utilidades y tipos
 
 - **Tipos** compartidos (`Incident`, `Profile`, `VoteAction`, `IncidentReport`,
   `AuditLog`, `HeatmapPoint`, etc.).

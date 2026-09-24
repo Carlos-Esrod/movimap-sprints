@@ -12,6 +12,8 @@ import Icon from '@/components/ui/Icon';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { createIncident, findNearbyIncidents, reverseGeocode, voteOnIncident } from '@/lib/supabase';
 import { processImage } from '@/lib/imageCompression';
+import { moderateImage } from '@/lib/imageModeration';
+import { sanitizeDescription } from '@/lib/textFilter';
 import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MAX_LENGTH, isInsideZone, CENTER } from '@/lib/constants';
 import type { Profile, NearbyIncident } from '@/types';
 
@@ -120,8 +122,14 @@ function ReportPage({ profile }: ReportPageProps) {
 
   const handleImageChange = async (file: File) => {
     const result = await processImage(file);
-    if (result.error) {
-      setImageError(result.error);
+    if (result.error || !result.file) {
+      setImageError(result.error || 'No se pudo procesar la imagen');
+      return;
+    }
+    const moderation = await moderateImage(result.file);
+    if (moderation.blocked) {
+      setImageError('La imagen es inapropiada y no puede usarse como evidencia. Intenta con otra foto.');
+      setImage(null);
       return;
     }
     setImageError('');
@@ -145,11 +153,17 @@ function ReportPage({ profile }: ReportPageProps) {
       return;
     }
 
+    const sanitized = sanitizeDescription(description);
+    const cleanDescription = sanitized.text;
+    if (sanitized.replaced) {
+      setDescription(cleanDescription);
+    }
+
     setLoading(true);
 
     const { data: incidentData, error } = await createIncident({
       category,
-      description,
+      description: cleanDescription,
       severity,
       observed_at: observedAt,
       estimated_duration: estimatedDuration,
