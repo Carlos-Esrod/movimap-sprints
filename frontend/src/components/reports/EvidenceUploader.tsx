@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { PHOTO_ACCEPTED_TYPES, PHOTO_MAX_SIZE_BYTES } from '@/lib/constants';
+import { PHOTO_ACCEPTED_TYPES, MAX_INPUT_SIZE_BYTES } from '@/lib/constants';
 import Icon from '@/components/ui/Icon';
 
 interface EvidenceUploaderProps {
@@ -19,7 +19,7 @@ function EvidenceUploader({ image, error, onChange, onClear }: EvidenceUploaderP
     onDrop,
     accept: { 'image/*': PHOTO_ACCEPTED_TYPES },
     maxFiles: 1,
-    maxSize: PHOTO_MAX_SIZE_BYTES,
+    maxSize: MAX_INPUT_SIZE_BYTES,
   });
 
   if (image) {
@@ -44,7 +44,7 @@ function EvidenceUploader({ image, error, onChange, onClear }: EvidenceUploaderP
       <input {...getInputProps()} />
       <Icon name="camera" className="text-primary" size={28} />
       <p className="text-label-md font-semibold text-on-surface">Arrastra una foto o haz clic</p>
-      <p className="text-label-sm text-on-surface-variant">JPG, PNG o WebP · máx. 2MB</p>
+      <p className="text-label-sm text-on-surface-variant">JPG, PNG o WebP · se comprime automáticamente</p>
       {error && <p className="text-label-sm text-error font-semibold mt-1">{error}</p>}
     </div>
   );

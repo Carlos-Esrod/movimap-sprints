@@ -30,6 +30,7 @@ export const SEVERITY_MARKER_COLORS: Record<number, string> = {
 };
 
 export const PHOTO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+export const MAX_INPUT_SIZE_BYTES = 30 * 1024 * 1024; // 30MB, tope de entrada antes de comprimir
 export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export const DESCRIPTION_MIN_LENGTH = 1;

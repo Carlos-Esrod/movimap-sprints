@@ -11,7 +11,8 @@ import EvidenceUploader from '@/components/reports/EvidenceUploader';
 import Icon from '@/components/ui/Icon';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { createIncident, findNearbyIncidents, reverseGeocode, voteOnIncident } from '@/lib/supabase';
-import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MAX_LENGTH, PHOTO_MAX_SIZE_BYTES, PHOTO_ACCEPTED_TYPES, isInsideZone, CENTER } from '@/lib/constants';
+import { processImage } from '@/lib/imageCompression';
+import { INCIDENT_CATEGORIES, DURATION_OPTIONS, DESCRIPTION_MAX_LENGTH, isInsideZone, CENTER } from '@/lib/constants';
 import type { Profile, NearbyIncident } from '@/types';
 
 interface ReportPageProps {
@@ -117,17 +118,14 @@ function ReportPage({ profile }: ReportPageProps) {
     setIsMapFullscreen(true);
   };
 
-  const handleImageChange = (file: File) => {
-    if (!PHOTO_ACCEPTED_TYPES.includes(file.type)) {
-      setImageError('Solo se permiten imágenes JPG, PNG o WebP');
-      return;
-    }
-    if (file.size > PHOTO_MAX_SIZE_BYTES) {
-      setImageError('La imagen no puede superar los 2MB');
+  const handleImageChange = async (file: File) => {
+    const result = await processImage(file);
+    if (result.error) {
+      setImageError(result.error);
       return;
     }
     setImageError('');
-    setImage(file);
+    setImage(result.file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
